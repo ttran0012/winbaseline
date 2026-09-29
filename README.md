@@ -7,14 +7,14 @@ cryptographically signed scan evidence. Written in Go.
 security baseline (based on the CIS Benchmarks), reports every setting that has
 drifted from the approved value, and saves the results as evidence for later review.
 
-Client: Atlas-Tech Inc. · IT599 Capstone · Tan Tran
+· IT599 Capstone ·
 
 ## Status
 
 | Area | Status |
 |---|---|
 | Baseline format (YAML) | Draft v0.1.0, 14 registry checks |
-| Registry collector | Working |
+| Registry collector | In-Progress... |
 | Services, firewall, audit policy, accounts, software collectors | Planned |
 | Comparison and severity | Working (equals / lte / gte, Windows defaults) |
 | Evidence storage | JSON results + SHA-256 hash (hash chain planned) |
