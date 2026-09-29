@@ -1,0 +1,6 @@
+# build output
+*.exe
+dist/
+
+# scan results can contain sensitive configuration details - never commit them
+results/

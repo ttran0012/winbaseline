@@ -1,0 +1,177 @@
+# Windows Configuration Baseline - Windows 11 Enterprise
+# Source: CIS Microsoft Windows 11 Enterprise Benchmark (https://www.cisecurity.org/cis-benchmarks)
+# Each check names the policy setting it covers. Add the CIS recommendation number
+# from the benchmark PDF in the "cis" field as checks are reviewed.
+#
+# Fields:
+#   id        unique check ID (never reuse a retired ID)
+#   title     policy setting name as shown in Group Policy / the benchmark
+#   severity  high | medium | low
+#   type      registry (more collector types to follow: service, firewall, audit, account, software)
+#   hive/path/value  where the setting lives
+#   operator  equals | lte | gte
+#   expected  the compliant value
+#   default   value Windows uses when the setting is not present (omit if unknown)
+
+name: Windows 11 Enterprise Baseline
+version: 0.1.0
+benchmark: CIS Microsoft Windows 11 Enterprise Benchmark
+
+checks:
+  - id: REG-001
+    title: "User Account Control: Run all administrators in Admin Approval Mode"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: EnableLUA
+    operator: equals
+    expected: 1
+    default: 1
+
+  - id: REG-002
+    title: "User Account Control: Behavior of the elevation prompt for administrators"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: ConsentPromptBehaviorAdmin
+    operator: equals
+    expected: 2
+
+  - id: REG-003
+    title: "Interactive logon: Do not require CTRL+ALT+DEL (Disabled)"
+    cis: ""
+    severity: low
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: DisableCAD
+    operator: equals
+    expected: 0
+
+  - id: REG-004
+    title: "Interactive logon: Machine inactivity limit (900 seconds or fewer)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: InactivityTimeoutSecs
+    operator: lte
+    expected: 900
+
+  - id: REG-005
+    title: "Network access: Do not allow anonymous enumeration of SAM accounts"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: RestrictAnonymousSAM
+    operator: equals
+    expected: 1
+    default: 1
+
+  - id: REG-006
+    title: "Network access: Do not allow anonymous enumeration of SAM accounts and shares"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: RestrictAnonymous
+    operator: equals
+    expected: 1
+
+  - id: REG-007
+    title: "Network security: LAN Manager authentication level (NTLMv2 only, refuse LM and NTLM)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: LmCompatibilityLevel
+    operator: equals
+    expected: 5
+
+  - id: REG-008
+    title: "Network security: Do not store LAN Manager hash value on next password change"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: NoLMHash
+    operator: equals
+    expected: 1
+    default: 1
+
+  - id: REG-009
+    title: "WDigest Authentication (disable storing plaintext credentials)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest
+    value: UseLogonCredential
+    operator: equals
+    expected: 0
+    default: 0
+
+  - id: REG-010
+    title: "Microsoft network server: Digitally sign communications (always)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    value: RequireSecuritySignature
+    operator: equals
+    expected: 1
+
+  - id: REG-011
+    title: "Microsoft network client: Digitally sign communications (always)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    value: RequireSecuritySignature
+    operator: equals
+    expected: 1
+
+  - id: REG-012
+    title: "Configure SMB v1 server (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    value: SMB1
+    operator: equals
+    expected: 0
+
+  - id: REG-013
+    title: "Turn off Autoplay (All drives)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    value: NoDriveTypeAutoRun
+    operator: equals
+    expected: 255
+
+  - id: REG-014
+    title: "Windows Firewall: Domain profile firewall state (On)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile
+    value: EnableFirewall
+    operator: equals
+    expected: 1
