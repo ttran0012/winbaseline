@@ -1,0 +1,33 @@
+#Requires -RunAsAdministrator
+# Run inside each Windows 11 client and the member server. Sets the static IP, renames the
+# computer if needed, and joins lab.atlas-tech.test in the right OU. Sign in with
+# LAB\Administrator when prompted.
+#   WS01:  .\Join-Lab.ps1 -Name WS01 -IP 10.10.10.21 -OU Hardened
+#   WS02:  .\Join-Lab.ps1 -Name WS02 -IP 10.10.10.22 -OU Default
+#   SRV01: .\Join-Lab.ps1 -Name SRV01 -IP 10.10.10.31 -OU Default
+
+param(
+  [Parameter(Mandatory)] [ValidateSet('WS01', 'WS02', 'SRV01')] [string] $Name,
+  [Parameter(Mandatory)] [string] $IP,
+  [Parameter(Mandatory)] [ValidateSet('Hardened', 'Default')] [string] $OU
+)
+
+$ErrorActionPreference = 'Stop'
+$nic = Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1
+Get-NetIPAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false
+Remove-NetRoute -InterfaceIndex $nic.ifIndex -DestinationPrefix '0.0.0.0/0' -Confirm:$false -ErrorAction SilentlyContinue
+New-NetIPAddress -InterfaceIndex $nic.ifIndex -IPAddress $IP -PrefixLength 24 -DefaultGateway 10.10.10.254 | Out-Null
+Set-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -ServerAddresses 10.10.10.10
+
+if (-not (Resolve-DnsName lab.atlas-tech.test -ErrorAction SilentlyContinue)) {
+  throw 'Cannot find the domain. Check that DC01 is running at 10.10.10.10.'
+}
+
+$cred = Get-Credential -Message 'Domain account that can join computers' -UserName 'LAB\Administrator'
+$join = @{
+  DomainName = 'lab.atlas-tech.test'
+  Credential = $cred
+  OUPath     = "OU=$OU,OU=Lab Computers,DC=lab,DC=atlas-tech,DC=test"
+}
+if ($env:COMPUTERNAME -ne $Name) { $join.NewName = $Name }   # renaming to the current name is an error
+Add-Computer @join -Restart

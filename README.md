@@ -13,34 +13,48 @@ drifted from the approved value, and saves the results as evidence for later rev
 
 | Area | Status |
 |---|---|
-| Baseline format (YAML) | Draft v0.1.0, 14 registry checks |
-| Registry collector | In-Progress... |
-| Services, firewall, audit policy, accounts, software collectors | Planned |
-| Comparison and severity | Working (equals / lte / gte, Windows defaults) |
-| Evidence storage | JSON results + SHA-256 hash (hash chain planned) |
+| Baseline format (YAML) | v0.2.0, 35 checks across 7 check types |
+| Registry collector | Working |
+| Services collector | Working (start type via Service Control Manager, query rights only) |
+| Accounts collector | Working (built-in Guest/Administrator found by RID; Administrators group members found by SID) |
+| Firewall collector | Working (Group Policy value overrides local value) |
+| Audit policy collector | Working (subcategories matched by GUID; requires administrator) |
+| Installed software collector | Working (prohibited-software patterns) |
+| Comparison and severity | Working |
+| Approved exceptions | Planned |
+| Evidence storage | Working: JSON results hash-chained with SHA-256, never overwritten, `-verify` detects edits, deletions, and reordering |
 | HTML report | Planned |
 
 ## Build and run
 
-Requires Go 1.27 or later on Windows.
+Requires Go 1.27 or later on Windows. Run from an elevated (administrator)
+terminal to include the audit policy checks.
 
 ```powershell
 go test ./...
 go build -o driftscan.exe ./cmd/driftscan
 .\driftscan.exe -baseline baseline\windows11-baseline.yaml -out results
+.\driftscan.exe -verify -out results
 ```
 
-The exit code is `0` when every check is compliant and `1` when drift is found,
-so the tool can run from Task Scheduler and flag problems.
+Exit codes: `0` all compliant, `1` drift found, `2` the scan could not run,
+`3` evidence verification failed. Task Scheduler can use these to flag problems.
 
+## Evidence chain
+
+Each saved scan stores the SHA-256 hash of the previous scan, and `results\chain.log`
+lists every scan with its own hash. `-verify` recomputes every hash and reports the
+first scan that was edited, deleted, or taken out of order. Someone with write access
+who rewrites every file and the log together could still forge the chain; signing the
+latest hash or copying it off the computer is planned to close that gap.
 ## Project layout
 
 ```
 cmd/driftscan/        command-line entry point
 internal/baseline/    loads and validates the YAML baseline
-internal/collect/     read-only collectors (registry so far)
+internal/collect/     read-only collectors (registry, services, accounts, firewall, audit, software)
 internal/compare/     compares observed values with expected values
-internal/report/      console table and JSON evidence files
+internal/report/      console table, JSON evidence files, and the hash chain
 baseline/             baseline definitions
 docs/                 design documents and diagrams
 ```
