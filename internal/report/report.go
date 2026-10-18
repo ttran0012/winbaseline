@@ -77,37 +77,37 @@ func clip(s string, n int) string {
 }
 
 // Save writes the scan as JSON, links it to the previous scan in the evidence
-// chain, and returns the file path and its SHA-256 hash.
-func Save(dir string, s Scan) (string, string, error) {
+// chain, and returns the chain entry: the file it wrote, that file's SHA-256
+// hash, and the hash of the scan before it.
+func Save(dir string, s Scan) (ChainEntry, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", "", err
+		return ChainEntry{}, err
 	}
 	lock, err := lockDir(dir)
 	if err != nil {
-		return "", "", fmt.Errorf("lock evidence chain: %w", err)
+		return ChainEntry{}, fmt.Errorf("lock evidence chain: %w", err)
 	}
 	defer func() { _ = lock.unlock() }()
 	prev, err := lastHash(dir)
 	if err != nil {
-		return "", "", fmt.Errorf("read evidence chain: %w", err)
+		return ChainEntry{}, fmt.Errorf("read evidence chain: %w", err)
 	}
 	s.PreviousHash = prev
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return "", "", err
+		return ChainEntry{}, err
 	}
 	stamp := strings.Replace(s.StartedAt.Format("20060102-150405.000"), ".", "-", 1)
 	name := fmt.Sprintf("scan-%s-%s.json", s.Host, stamp)
-	path := filepath.Join(dir, name)
-	if err := writeNew(path, data); err != nil {
-		return "", "", err
+	if err := writeNew(filepath.Join(dir, name), data); err != nil {
+		return ChainEntry{}, err
 	}
 	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:])
-	if err := appendChain(dir, ChainEntry{File: name, Hash: hash, PreviousHash: prev}); err != nil {
-		return "", "", fmt.Errorf("update evidence chain: %w", err)
+	entry := ChainEntry{File: name, Hash: hex.EncodeToString(sum[:]), PreviousHash: prev}
+	if err := appendChain(dir, entry); err != nil {
+		return ChainEntry{}, fmt.Errorf("update evidence chain: %w", err)
 	}
-	return path, hash, nil
+	return entry, nil
 }
 
 // writeNew writes a file that must not already exist, so saved evidence is never overwritten.

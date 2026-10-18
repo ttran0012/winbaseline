@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ttran0012/winbaseline/internal/baseline"
@@ -22,6 +23,7 @@ import (
 func main() {
 	baselinePath := flag.String("baseline", `baseline\windows11-baseline.yaml`, "path to the baseline YAML file")
 	outDir := flag.String("out", "results", "folder for saved scan results")
+	writeHTML := flag.Bool("html", true, "also write a readable HTML report beside each saved JSON result")
 	verify := flag.Bool("verify", false, "verify the saved evidence chain instead of scanning")
 	flag.Parse()
 
@@ -65,12 +67,24 @@ func main() {
 
 	report.Print(os.Stdout, scan)
 
-	path, hash, err := report.Save(*outDir, scan)
+	entry, err := report.Save(*outDir, scan)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error saving results:", err)
 		os.Exit(2)
 	}
-	fmt.Printf("\nResults saved: %s\nSHA-256: %s (linked to previous scan in %s)\n", path, hash, report.ChainLog)
+	fmt.Printf("\nResults saved: %s\nSHA-256: %s (linked to previous scan in %s)\n",
+		filepath.Join(*outDir, entry.File), entry.Hash, report.ChainLog)
+
+	if *writeHTML {
+		// The evidence is already saved and chained at this point, so a failed
+		// HTML view is reported but does not change the scan's exit code.
+		htmlPath, err := report.SaveHTML(*outDir, scan, entry)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "warning:", err)
+		} else {
+			fmt.Printf("HTML report: %s\n", htmlPath)
+		}
+	}
 
 	if scan.Summary.Drift > 0 {
 		os.Exit(1) // lets Task Scheduler flag drift; approved exceptions are not drift

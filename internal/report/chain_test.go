@@ -14,11 +14,11 @@ func saveScans(t *testing.T, dir string, n int) []string {
 	var paths []string
 	start := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < n; i++ {
-		p, _, err := Save(dir, Scan{Host: "LAB-WIN11", StartedAt: start.Add(time.Duration(i) * time.Minute), BaselineVersion: "0.2.0"})
+		e, err := Save(dir, Scan{Host: "LAB-WIN11", StartedAt: start.Add(time.Duration(i) * time.Minute), BaselineVersion: "0.2.0"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		paths = append(paths, p)
+		paths = append(paths, filepath.Join(dir, e.File))
 	}
 	return paths
 }
@@ -35,10 +35,10 @@ func TestChainVerifies(t *testing.T) {
 func TestSaveNeverOverwritesEvidence(t *testing.T) {
 	dir := t.TempDir()
 	s := Scan{Host: "LAB-WIN11", StartedAt: time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)}
-	if _, _, err := Save(dir, s); err != nil {
+	if _, err := Save(dir, s); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Save(dir, s); err == nil { // same host and timestamp
+	if _, err := Save(dir, s); err == nil { // same host and timestamp
 		t.Fatal("second save with the same name should be refused")
 	}
 	if n, err := Verify(dir); err != nil || n != 1 {
@@ -57,7 +57,7 @@ func TestConcurrentSavesKeepChainIntact(t *testing.T) {
 			defer wg.Done()
 			// Distinct timestamps so saves differ only by chain position, not file name.
 			s := Scan{Host: "LAB-WIN11", StartedAt: start.Add(time.Duration(i) * time.Second)}
-			if _, _, err := Save(dir, s); err != nil {
+			if _, err := Save(dir, s); err != nil {
 				t.Errorf("Save: %v", err)
 			}
 		}(i)
