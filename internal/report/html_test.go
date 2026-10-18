@@ -220,3 +220,105 @@ func TestSaveHTMLWritesBesideTheJSONAndStaysOutOfTheChain(t *testing.T) {
 		t.Error("a second write to the same name should be refused")
 	}
 }
+
+// capturedScan is a scan that was compared with an approved capture.
+func capturedScan(results []compare.Result) Scan {
+	s := testScan(results)
+	s.Capture = &CaptureRef{
+		File:       "capture-LAB-WIN11-20261001-080000-000.json",
+		Hash:       strings.Repeat("c", 64),
+		CapturedAt: time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC),
+	}
+	return s
+}
+
+func TestHTMLShowsChangesWhenComparedWithACapture(t *testing.T) {
+	s := capturedScan([]compare.Result{
+		{ID: "SVC-001", Status: compare.Drift, Severity: "high", Change: compare.Changed,
+			Note: `changed since capture: was "disabled", now "manual"`},
+		{ID: "SVC-002", Status: compare.Compliant, Severity: "low", Change: compare.Unchanged},
+		{ID: "SVC-003", Status: compare.Compliant, Severity: "low", Change: compare.NewCheck},
+	})
+	page := render(t, s, ChainEntry{File: "scan.json", Hash: "abc", PreviousHash: "def"})
+
+	for _, want := range []string{
+		"<th>Change</th>",
+		`<span class="badge changed">CHANGED</span>`,
+		`<span class="badge unchanged">UNCHANGED</span>`,
+		`<span class="badge new-check">NEW_CHECK</span>`,
+		`<span class="n">1</span><span class="k">Changed</span>`,
+		"was &#34;disabled&#34;, now &#34;manual&#34;",
+		s.Capture.File,
+		s.Capture.Hash,
+		"Approved capture",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+}
+
+func TestHTMLWithoutACaptureHasNoChangeColumn(t *testing.T) {
+	page := render(t, testScan([]compare.Result{{ID: "SVC-001", Status: compare.Drift, Severity: "high"}}),
+		ChainEntry{File: "scan.json"})
+	for _, forbidden := range []string{"<th>Change</th>", "Approved capture", "Capture file"} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("a scan with no capture should not show %q", forbidden)
+		}
+	}
+}
+
+// Something changed since the computer was approved is the first thing the
+// reader needs, even when the baseline itself is satisfied.
+func TestSortForReportPutsChangesFirst(t *testing.T) {
+	in := []compare.Result{
+		{ID: "drift-high", Status: compare.Drift, Severity: "high", Change: compare.Unchanged},
+		{ID: "compliant-low-changed", Status: compare.Compliant, Severity: "low", Change: compare.Changed},
+		{ID: "error-high", Status: compare.Error, Severity: "high", Change: compare.Unchanged},
+		{ID: "drift-low-changed", Status: compare.Drift, Severity: "low", Change: compare.Changed},
+		{ID: "drift-high-changed", Status: compare.Drift, Severity: "high", Change: compare.Changed},
+	}
+	want := []string{
+		"drift-high-changed", "drift-low-changed", "compliant-low-changed",
+		"drift-high", "error-high",
+	}
+	got := sortForReport(in)
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Errorf("position %d = %s, want %s", i, got[i].ID, id)
+		}
+	}
+}
+
+// The HTML report is the copy that gets emailed and filed, so it has to carry
+// the warning too: a reader must not take a page with no change column as proof
+// that nothing changed.
+func TestHTMLShowsARejectedCapture(t *testing.T) {
+	s := testScan([]compare.Result{{ID: "SVC-001", Status: compare.Drift, Severity: "high"}})
+	s.CaptureStatus = CaptureStatusRejected + "capture chain broken after 1 valid capture(s): record 2 was modified"
+	page := render(t, s, ChainEntry{File: "scan.json", Hash: "abc", PreviousHash: "def"})
+
+	for _, want := range []string{
+		`<p class="alert">`,
+		"Capture not used",
+		"capture chain broken after 1 valid capture(s)",
+		"says nothing about what changed",
+		"SVC-001", // the policy results are still there
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"<th>Change</th>", "Approved capture", "Capture file"} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("a rejected capture should not produce %q", forbidden)
+		}
+	}
+}
+
+func TestHTMLHasNoAlertWhenNothingIsWrong(t *testing.T) {
+	page := render(t, testScan([]compare.Result{{ID: "SVC-001", Status: compare.Compliant, Severity: "low"}}), ChainEntry{})
+	if strings.Contains(page, `class="alert"`) {
+		t.Error("a healthy scan should not show an alert banner")
+	}
+}

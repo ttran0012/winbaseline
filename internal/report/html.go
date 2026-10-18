@@ -28,6 +28,17 @@ var statusOrder = map[string]int{
 // severityOrder lists the most severe check first.
 var severityOrder = map[string]int{"high": 0, "medium": 1, "low": 2}
 
+// changeRank puts settings that no longer match the approved capture above
+// everything else, because a change nobody approved is the first thing the
+// person reading the report needs to see. Scans without a capture have no
+// change at all, so this leaves their order to the status rules below.
+func changeRank(change string) int {
+	if change == compare.Changed {
+		return 0
+	}
+	return 1
+}
+
 // rank returns the position of key, or one past the end for anything unlisted,
 // so an unexpected value sorts last instead of first.
 func rank(order map[string]int, key string) int {
@@ -40,15 +51,18 @@ func rank(order map[string]int, key string) int {
 	return len(order)
 }
 
-// sortForReport copies the results into reading order: drift first, then errors,
-// approved exceptions, and compliant checks, each group most severe first. The
-// saved JSON keeps the baseline's own order, so the hashed evidence is untouched.
+// sortForReport copies the results into reading order: anything changed since
+// the capture first, then drift, errors, approved exceptions, and compliant
+// checks, each group most severe first. The saved JSON keeps the baseline's own
+// order, so the hashed evidence is untouched.
 func sortForReport(rs []compare.Result) []compare.Result {
 	out := make([]compare.Result, len(rs))
 	copy(out, rs)
 	sort.SliceStable(out, func(i, j int) bool {
-		a, b := rank(statusOrder, out[i].Status), rank(statusOrder, out[j].Status)
-		if a != b {
+		if a, b := changeRank(out[i].Change), changeRank(out[j].Change); a != b {
+			return a < b
+		}
+		if a, b := rank(statusOrder, out[i].Status), rank(statusOrder, out[j].Status); a != b {
 			return a < b
 		}
 		return rank(severityOrder, out[i].Severity) < rank(severityOrder, out[j].Severity)
@@ -84,6 +98,18 @@ func severityClass(severity string) string {
 	return "other"
 }
 
+func changeClass(change string) string {
+	switch change {
+	case compare.Changed:
+		return "changed"
+	case compare.Unchanged:
+		return "unchanged"
+	case compare.NewCheck:
+		return "new-check"
+	}
+	return "other"
+}
+
 type htmlData struct {
 	Scan     Scan
 	Results  []compare.Result // sorted for reading; Scan.Results keeps the saved order
@@ -104,7 +130,7 @@ func SaveHTML(dir string, s Scan, e ChainEntry) (string, error) {
 		return "", fmt.Errorf("render HTML report: %w", err)
 	}
 	path := filepath.Join(dir, strings.TrimSuffix(e.File, ".json")+".html")
-	if err := writeNew(path, buf.Bytes()); err != nil {
+	if err := WriteNew(path, buf.Bytes()); err != nil {
 		return "", fmt.Errorf("write HTML report: %w", err)
 	}
 	return path, nil
@@ -113,6 +139,7 @@ func SaveHTML(dir string, s Scan, e ChainEntry) (string, error) {
 var htmlTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
 	"statusClass":   statusClass,
 	"severityClass": severityClass,
+	"changeClass":   changeClass,
 	"upper":         strings.ToUpper,
 }).Parse(htmlSource))
 
@@ -154,12 +181,19 @@ const htmlSource = `<!DOCTYPE html>
   .exception  { background: #eaf1fb; border-color: #1a4f9c; color: #14407e; }
   .compliant  { background: #eaf6ec; border-color: #1f7a33; color: #19622a; }
   .other      { background: #f0f0f0; border-color: #555; color: #333; }
-  li.drift, li.error, li.exception, li.compliant, li.total { background: #fff; }
+  .changed    { background: #f4eafd; border-color: #67399e; color: #4e2a79; }
+  .unchanged  { background: #fff; border-color: #bbb; color: #555; font-weight: 400; }
+  .new-check  { background: #e9f4f4; border-color: #19616b; color: #134e56; }
+  li.drift, li.error, li.exception, li.compliant, li.changed, li.total { background: #fff; }
   li.total { border-left-color: #555; }
   li.drift { border-left-color: #a3261e; }
   li.error { border-left-color: #9a5b00; }
   li.exception { border-left-color: #1a4f9c; }
   li.compliant { border-left-color: #1f7a33; }
+  li.changed { border-left-color: #67399e; }
+  p.alert { border: 2px solid #a3261e; border-left-width: 8px; background: #fdecea; color: #7c1d16;
+            padding: 10px 14px; margin: 0 0 20px; border-radius: 3px; }
+  p.alert strong { text-transform: uppercase; letter-spacing: .03em; }
   .sev { font-size: 12px; font-weight: 600; white-space: nowrap; }
   .sev.high { color: #7c1d16; }
   .sev.medium { color: #7a4800; }
@@ -177,11 +211,16 @@ const htmlSource = `<!DOCTYPE html>
 <h1>Windows configuration drift report</h1>
 <p class="sub">Read-only scan. No setting on this computer was changed.</p>
 
+{{if .Scan.CaptureStatus}}<p class="alert"><strong>Capture not used</strong> &mdash; {{.Scan.CaptureStatus}}.
+The policy results below ran as usual, but this scan says nothing about what changed since this
+computer was approved. Verify the capture chain before relying on the change history.</p>{{end}}
+
 <dl class="facts">
   <dt>Computer</dt><dd>{{.Scan.Host}}</dd>
   <dt>Scan time</dt><dd>{{.Scan.StartedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}}</dd>
   <dt>Baseline</dt><dd>{{.Scan.BaselineName}} v{{.Scan.BaselineVersion}}</dd>
   <dt>Ran as administrator</dt><dd>{{if .Scan.Elevated}}Yes{{else}}No - some settings could not be read{{end}}</dd>
+  {{with .Scan.Capture}}<dt>Approved capture</dt><dd>{{.CapturedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}}</dd>{{end}}
 </dl>
 
 <h2>Summary</h2>
@@ -191,18 +230,20 @@ const htmlSource = `<!DOCTYPE html>
   <li class="drift"><span class="n">{{.Scan.Summary.Drift}}</span><span class="k">Drift</span></li>
   {{if .Scan.Summary.Exceptions}}<li class="exception"><span class="n">{{.Scan.Summary.Exceptions}}</span><span class="k">Exceptions</span></li>{{end}}
   <li class="error"><span class="n">{{.Scan.Summary.Errors}}</span><span class="k">Errors</span></li>
+  {{if .Scan.Capture}}<li class="changed"><span class="n">{{.Scan.Summary.Changed}}</span><span class="k">Changed</span></li>{{end}}
 </ul>
 
 <h2>Results</h2>
 <table>
 <thead>
-<tr><th>ID</th><th>Status</th><th>Severity</th><th>Setting</th><th>Expected</th><th>Actual</th><th>Note</th></tr>
+<tr><th>ID</th><th>Status</th>{{if .Scan.Capture}}<th>Change</th>{{end}}<th>Severity</th><th>Setting</th><th>Expected</th><th>Actual</th><th>Note</th></tr>
 </thead>
 <tbody>
 {{range .Results}}
 <tr>
   <td class="id">{{.ID}}</td>
   <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+  {{if $.Scan.Capture}}<td><span class="badge {{changeClass .Change}}">{{.Change}}</span></td>{{end}}
   <td><span class="sev {{severityClass .Severity}}">{{upper .Severity}}</span></td>
   <td class="setting">{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}</td>
   <td>{{.Expected}}</td>
@@ -210,7 +251,7 @@ const htmlSource = `<!DOCTYPE html>
   <td class="note">{{.Note}}</td>
 </tr>
 {{else}}
-<tr><td colspan="7">This scan recorded no results.</td></tr>
+<tr><td colspan="{{if .Scan.Capture}}8{{else}}7{{end}}">This scan recorded no results.</td></tr>
 {{end}}
 </tbody>
 </table>
@@ -220,7 +261,9 @@ const htmlSource = `<!DOCTYPE html>
   <dt>Evidence file</dt><dd>{{.Evidence.File}}</dd>
   <dt>SHA-256</dt><dd>{{.Evidence.Hash}}</dd>
   <dt>Previous scan</dt><dd>{{.Evidence.PreviousHash}}</dd>
-</dl>
+{{with .Scan.Capture}}  <dt>Capture file</dt><dd>{{.File}}</dd>
+  <dt>Capture SHA-256</dt><dd>{{.Hash}}</dd>
+{{end}}</dl>
 <p>The JSON evidence file named above is the tamper-evident record of this scan, hash-chained
 to the scan before it; this page is only a readable view of that file and is not part of the chain.</p>
 </footer>

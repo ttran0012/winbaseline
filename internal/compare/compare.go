@@ -11,12 +11,23 @@ import (
 	"github.com/ttran0012/winbaseline/internal/collect"
 )
 
-// Status of a single check.
+// Status of a single check: how the setting compares with the baseline policy.
 const (
 	Compliant = "COMPLIANT"
 	Drift     = "DRIFT"
 	Exception = "EXCEPTION"
 	Error     = "ERROR"
+)
+
+// Change of a single check: how the setting compares with the configuration
+// that was captured and approved for this computer. It answers a different
+// question from Status, which is why it is reported beside it: a setting can be
+// compliant with the baseline and still have been changed since it was
+// approved, or be drifting and have been drifting ever since the capture.
+const (
+	Unchanged = "UNCHANGED"
+	Changed   = "CHANGED"
+	NewCheck  = "NEW_CHECK"
 )
 
 // Result is the outcome of one check.
@@ -28,6 +39,7 @@ type Result struct {
 	Expected string `json:"expected"`
 	Actual   string `json:"actual"`
 	Status   string `json:"status"`
+	Change   string `json:"change,omitempty"` // empty unless the scan was compared with a capture
 	Note     string `json:"note,omitempty"`
 }
 
@@ -100,6 +112,27 @@ func ApplyExceptions(res Result, exceptions []baseline.Exception, host string, t
 	if foundExpired {
 		res.Note = addNote(res.Note, fmt.Sprintf("approved exception expired on %s: %s (approved by %s)",
 			expired.Expires, expired.Reason, expired.ApprovedBy))
+	}
+	return res
+}
+
+// ApplyChange records how the setting compares with the approved capture.
+// Both values are normalized captures of the same reading, so they can be
+// compared as plain text: approved is the value recorded in the capture and
+// current is the value read now. inCapture is false when the capture was taken
+// before the check existed, which is reported as a new check rather than as a
+// change nobody approved. Scans run without a capture never call this, and
+// their results carry no change at all.
+func ApplyChange(res Result, approved, current string, inCapture bool) Result {
+	switch {
+	case !inCapture:
+		res.Change = NewCheck
+	case approved == current:
+		res.Change = Unchanged
+	default:
+		res.Change = Changed
+		// Quoted, because a captured value can itself be a comma-separated list.
+		res.Note = addNote(res.Note, fmt.Sprintf("changed since capture: was %q, now %q", approved, current))
 	}
 	return res
 }

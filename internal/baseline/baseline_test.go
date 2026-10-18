@@ -65,6 +65,13 @@ func TestValidateExceptions(t *testing.T) {
 		{"unknown check id", edit(func(e *Exception) { e.Check = "SVC-999" }), `no check with id "SVC-999"`},
 		{"missing reason", edit(func(e *Exception) { e.Reason = "" }), "missing reason"},
 		{"missing approved_by", edit(func(e *Exception) { e.ApprovedBy = "" }), "missing approved_by"},
+		// A proposed exception arrives with placeholders a person has to replace.
+		{"reason left as TODO", edit(func(e *Exception) { e.Reason = Placeholder }), "reason is still TODO"},
+		{"reason left as todo in any case", edit(func(e *Exception) { e.Reason = "todo" }), "reason is still TODO"},
+		{"reason left as TODO with stray spacing", edit(func(e *Exception) { e.Reason = "  ToDo  " }), "reason is still TODO"},
+		{"approved_by left as TODO", edit(func(e *Exception) { e.ApprovedBy = Placeholder }), "approved_by is still TODO"},
+		{"a reason that merely mentions a TODO is accepted",
+			edit(func(e *Exception) { e.Reason = "TODO ticket IT-4821 tracks the replacement" }), ""},
 		{"missing expiry date", edit(func(e *Exception) { e.Expires = "" }), "expires must be a date"},
 		{"expiry in the wrong format", edit(func(e *Exception) { e.Expires = "31/12/2026" }), "expires must be a date"},
 		{"expiry that is not a real day", edit(func(e *Exception) { e.Expires = "2026-02-30" }), "expires must be a date"},

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The evidence chain links every saved scan to the one before it. Each scan
@@ -33,7 +34,16 @@ type ChainEntry struct {
 	PreviousHash string
 }
 
-func readChain(dir string) ([]ChainEntry, error) {
+// ChainRecord is a record that can be linked into an evidence chain. Verify
+// reads previous_hash back out of the saved JSON, so every chained record has
+// to store the hash SaveChained gives it.
+type ChainRecord interface {
+	LinkPrevious(hash string)
+}
+
+// ReadChain returns every entry in a folder's ledger, oldest first. A folder
+// with no ledger yet simply has no entries, which is not an error.
+func ReadChain(dir string) ([]ChainEntry, error) {
 	f, err := os.Open(filepath.Join(dir, ChainLog))
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -59,7 +69,7 @@ func readChain(dir string) ([]ChainEntry, error) {
 
 // lastHash returns the hash of the newest scan in the chain, or GenesisHash.
 func lastHash(dir string) (string, error) {
-	entries, err := readChain(dir)
+	entries, err := ReadChain(dir)
 	if err != nil {
 		return "", err
 	}
@@ -81,10 +91,65 @@ func appendChain(dir string, e ChainEntry) error {
 	return f.Close()
 }
 
-// Verify checks every scan in the chain. It returns the number of scans that
-// verified and an error describing the first problem found.
+// RecordName builds the base name of a saved record: what kind of record it is,
+// which computer it came from, and a timestamp that sorts chronologically. The
+// caller adds the extension.
+func RecordName(kind, host string, t time.Time) string {
+	stamp := strings.Replace(t.Format("20060102-150405.000"), ".", "-", 1)
+	return fmt.Sprintf("%s-%s-%s", kind, host, stamp)
+}
+
+// SaveChained writes one record as JSON in dir and links it to the newest
+// record already in that folder, returning the ledger entry. Saves are
+// serialized and no file is ever overwritten, so every folder with a ChainLog
+// is append-only: scans and captures each keep their own.
+func SaveChained(dir, name string, record ChainRecord) (ChainEntry, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ChainEntry{}, err
+	}
+	lock, err := lockDir(dir)
+	if err != nil {
+		return ChainEntry{}, fmt.Errorf("lock evidence chain: %w", err)
+	}
+	defer func() { _ = lock.unlock() }()
+	prev, err := lastHash(dir)
+	if err != nil {
+		return ChainEntry{}, fmt.Errorf("read evidence chain: %w", err)
+	}
+	record.LinkPrevious(prev)
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return ChainEntry{}, err
+	}
+	if err := WriteNew(filepath.Join(dir, name), data); err != nil {
+		return ChainEntry{}, err
+	}
+	sum := sha256.Sum256(data)
+	entry := ChainEntry{File: name, Hash: hex.EncodeToString(sum[:]), PreviousHash: prev}
+	if err := appendChain(dir, entry); err != nil {
+		return ChainEntry{}, fmt.Errorf("update evidence chain: %w", err)
+	}
+	return entry, nil
+}
+
+// WriteNew writes a file that must not already exist, so nothing saved in a
+// results folder is ever overwritten.
+func WriteNew(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("refusing to overwrite existing evidence: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// Verify checks every record in the chain. It returns the number that verified
+// and an error describing the first problem found.
 func Verify(dir string) (int, error) {
-	entries, err := readChain(dir)
+	entries, err := ReadChain(dir)
 	if err != nil {
 		return 0, err
 	}
@@ -95,20 +160,20 @@ func Verify(dir string) (int, error) {
 	for i, e := range entries {
 		data, err := os.ReadFile(filepath.Join(dir, e.File))
 		if err != nil {
-			return i, fmt.Errorf("scan %d (%s) is missing: %w", i+1, e.File, err)
+			return i, fmt.Errorf("record %d (%s) is missing: %w", i+1, e.File, err)
 		}
 		sum := sha256.Sum256(data)
 		if got := hex.EncodeToString(sum[:]); got != e.Hash {
-			return i, fmt.Errorf("scan %d (%s) was modified: hash is %s, chain recorded %s", i+1, e.File, got, e.Hash)
+			return i, fmt.Errorf("record %d (%s) was modified: hash is %s, chain recorded %s", i+1, e.File, got, e.Hash)
 		}
 		if e.PreviousHash != prev {
-			return i, fmt.Errorf("scan %d (%s) is out of order or a scan was removed before it", i+1, e.File)
+			return i, fmt.Errorf("record %d (%s) is out of order, or a record was removed before it", i+1, e.File)
 		}
 		var s struct {
 			PreviousHash string `json:"previous_hash"`
 		}
 		if err := json.Unmarshal(data, &s); err != nil || s.PreviousHash != prev {
-			return i, fmt.Errorf("scan %d (%s) does not link to the previous scan", i+1, e.File)
+			return i, fmt.Errorf("record %d (%s) does not link to the record before it", i+1, e.File)
 		}
 		prev = e.Hash
 	}

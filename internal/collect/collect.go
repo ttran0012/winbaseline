@@ -6,6 +6,8 @@ package collect
 
 import (
 	"fmt"
+	"os"
+	"os/user"
 
 	"golang.org/x/sys/windows"
 
@@ -58,4 +60,17 @@ func (c *Collector) Read(chk baseline.Check) Reading {
 // IsElevated reports whether the scan is running as an administrator.
 func IsElevated() bool {
 	return windows.GetCurrentProcessToken().IsElevated()
+}
+
+// CurrentUser returns the Windows account running the scan, for the record of
+// who approved a capture. It falls back to the environment, and then to a plain
+// label, because not knowing who ran it is no reason to fail a capture.
+func CurrentUser() string {
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	if name := os.Getenv("USERNAME"); name != "" {
+		return name
+	}
+	return "unknown"
 }
