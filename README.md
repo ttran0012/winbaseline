@@ -23,7 +23,7 @@ drifted from the approved value, and saves the results as evidence for later rev
 | Comparison and severity | Working |
 | Approved exceptions | Working (reported as EXCEPTION, not drift, until the approval expires) |
 | Evidence storage | Working: JSON results hash-chained with SHA-256, never overwritten, `-verify` detects edits, deletions, and reordering |
-| HTML report | Planned |
+| HTML report | Working: one self-contained file per scan, written beside the JSON evidence (`-html=false` to skip) |
 
 ## Build and run
 
@@ -39,6 +39,17 @@ go build -o driftscan.exe ./cmd/driftscan
 
 Exit codes: `0` all compliant, `1` drift found, `2` the scan could not run,
 `3` evidence verification failed. Task Scheduler can use these to flag problems.
+
+Each scan also writes an HTML report beside its JSON file, with the same base
+name: `results\scan-HOST-20261018-121925-666.html`. It is one self-contained
+file — inline styles, no scripts, no web fonts, no external links — so it can be
+emailed or attached to an audit folder and still render years later. Results are
+listed drift first, then errors, approved exceptions, and compliant checks, most
+severe first within each group, and the status is always spelled out as well as
+colored so the page survives black-and-white printing. The footer names the JSON
+file and its hash. The HTML is a view, not evidence: it is not part of the hash
+chain, `-verify` ignores it, and deleting it changes nothing. Pass `-html=false`
+to write only the JSON.
 
 ## Approved exceptions
 
