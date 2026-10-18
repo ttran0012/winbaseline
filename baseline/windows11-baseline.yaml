@@ -361,3 +361,22 @@ checks:
     type: software
     pattern: "(?i)teamviewer|anydesk|ultraviewer|rustdesk"
     expected: absent
+
+# ---------------------------------------------------------------- exceptions
+# Deviations the organization has approved. While an exception is in force its
+# check is reported as EXCEPTION instead of DRIFT: the deviation still appears
+# in the scan evidence, but it does not set the drift exit code. An exception
+# never changes a COMPLIANT or ERROR result.
+#   check        ID of the check it covers; must be one of the checks above
+#   hosts        computer names it applies to; omit to cover every host
+#   reason       why the deviation was accepted
+#   approved_by  who accepted it
+#   expires      last day it applies, as YYYY-MM-DD; from the next day the
+#                check is drift again and the note says the exception expired
+#
+# exceptions:
+#   - check: SW-002
+#     hosts: [LAB-WIN11]
+#     reason: "Helpdesk uses TeamViewer for remote support until the Intune rollout finishes"
+#     approved_by: "J. Lee, IT Manager"
+#     expires: "2026-12-31"

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,12 +23,50 @@ const (
 	TypeSoftware = "software"
 )
 
-// Baseline is a versioned set of configuration checks.
+// ExpiryFormat is the date layout used by an exception's expires field.
+const ExpiryFormat = "2006-01-02"
+
+// Baseline is a versioned set of configuration checks and the deviations the
+// organization has approved.
 type Baseline struct {
-	Name      string  `yaml:"name"`
-	Version   string  `yaml:"version"`
-	Benchmark string  `yaml:"benchmark"`
-	Checks    []Check `yaml:"checks"`
+	Name       string      `yaml:"name"`
+	Version    string      `yaml:"version"`
+	Benchmark  string      `yaml:"benchmark"`
+	Checks     []Check     `yaml:"checks"`
+	Exceptions []Exception `yaml:"exceptions"`
+}
+
+// Exception is an approved deviation from one check. While it is in force the
+// check is reported as an exception instead of drift; nothing else changes, so
+// the deviation stays visible in the evidence.
+type Exception struct {
+	Check      string   `yaml:"check"`       // the check ID this covers
+	Hosts      []string `yaml:"hosts"`       // computer names; empty means every host
+	Reason     string   `yaml:"reason"`      // why the deviation was accepted
+	ApprovedBy string   `yaml:"approved_by"` // who accepted it
+	Expires    string   `yaml:"expires"`     // last day it applies, as YYYY-MM-DD
+}
+
+// ExpiresOn returns the last day the exception applies.
+func (e Exception) ExpiresOn() (time.Time, error) {
+	return time.Parse(ExpiryFormat, e.Expires)
+}
+
+// Covers reports whether the exception was written for this check on this host.
+// Host names are compared case-insensitively, as Windows does.
+func (e Exception) Covers(checkID, host string) bool {
+	if e.Check != checkID {
+		return false
+	}
+	if len(e.Hosts) == 0 {
+		return true
+	}
+	for _, h := range e.Hosts {
+		if strings.EqualFold(h, host) {
+			return true
+		}
+	}
+	return false
 }
 
 // Check describes one expected configuration setting.
@@ -126,6 +165,37 @@ func (b *Baseline) Validate() error {
 		if err := c.validateType(); err != nil {
 			return fmt.Errorf("check %s: %w", c.ID, err)
 		}
+	}
+	for i, e := range b.Exceptions {
+		err := e.validate(seen)
+		if err == nil {
+			continue
+		}
+		if e.Check == "" {
+			return fmt.Errorf("exception %d: %w", i+1, err)
+		}
+		return fmt.Errorf("exception %s: %w", e.Check, err)
+	}
+	return nil
+}
+
+// validate rejects exceptions that do not name a known check or that are
+// missing the approval record an auditor needs.
+func (e Exception) validate(checks map[string]bool) error {
+	if e.Check == "" {
+		return fmt.Errorf("missing check id")
+	}
+	if !checks[e.Check] {
+		return fmt.Errorf("no check with id %q in this baseline", e.Check)
+	}
+	if e.Reason == "" {
+		return fmt.Errorf("missing reason")
+	}
+	if e.ApprovedBy == "" {
+		return fmt.Errorf("missing approved_by")
+	}
+	if _, err := e.ExpiresOn(); err != nil {
+		return fmt.Errorf("expires must be a date like 2026-12-31 (got %q)", e.Expires)
 	}
 	return nil
 }

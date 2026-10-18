@@ -30,10 +30,11 @@ type Scan struct {
 
 // Summary counts results by status.
 type Summary struct {
-	Total     int `json:"total"`
-	Compliant int `json:"compliant"`
-	Drift     int `json:"drift"`
-	Errors    int `json:"errors"`
+	Total      int `json:"total"`
+	Compliant  int `json:"compliant"`
+	Drift      int `json:"drift"`
+	Exceptions int `json:"exceptions"`
+	Errors     int `json:"errors"`
 }
 
 // Summarize counts the results.
@@ -45,6 +46,8 @@ func Summarize(rs []compare.Result) Summary {
 			s.Compliant++
 		case compare.Drift:
 			s.Drift++
+		case compare.Exception:
+			s.Exceptions++
 		default:
 			s.Errors++
 		}
@@ -62,8 +65,8 @@ func Print(w io.Writer, s Scan) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.ID, r.Status, strings.ToUpper(r.Severity), r.Expected, clip(r.Actual, 40), r.Title)
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "\n%d checks: %d compliant, %d drift, %d errors\n",
-		s.Summary.Total, s.Summary.Compliant, s.Summary.Drift, s.Summary.Errors)
+	fmt.Fprintf(w, "\n%d checks: %d compliant, %d drift, %d approved exceptions, %d errors\n",
+		s.Summary.Total, s.Summary.Compliant, s.Summary.Drift, s.Summary.Exceptions, s.Summary.Errors)
 }
 
 func clip(s string, n int) string {

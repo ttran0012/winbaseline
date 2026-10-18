@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ttran0012/winbaseline/internal/baseline"
 	"github.com/ttran0012/winbaseline/internal/collect"
@@ -14,6 +15,7 @@ import (
 const (
 	Compliant = "COMPLIANT"
 	Drift     = "DRIFT"
+	Exception = "EXCEPTION"
 	Error     = "ERROR"
 )
 
@@ -64,6 +66,57 @@ func Evaluate(c baseline.Check, r collect.Reading) Result {
 		}
 	}
 	return res
+}
+
+// ApplyExceptions reports an approved deviation as EXCEPTION instead of DRIFT.
+// An exception applies only to a drift result, only on a host it covers, and
+// only up to and including its expiry date; today is passed in so the decision
+// is reproducible. Compliant and error results are returned unchanged.
+func ApplyExceptions(res Result, exceptions []baseline.Exception, host string, today time.Time) Result {
+	if res.Status != Drift {
+		return res
+	}
+	var expired baseline.Exception
+	var foundExpired bool
+	for _, e := range exceptions {
+		if !e.Covers(res.ID, host) {
+			continue
+		}
+		expiry, err := e.ExpiresOn() // validated when the baseline loaded
+		if err != nil {
+			continue
+		}
+		if !onOrBefore(today, expiry) {
+			if !foundExpired {
+				expired, foundExpired = e, true
+			}
+			continue
+		}
+		res.Status = Exception
+		res.Note = addNote(res.Note, fmt.Sprintf("approved exception: %s (approved by %s, expires %s)",
+			e.Reason, e.ApprovedBy, e.Expires))
+		return res
+	}
+	if foundExpired {
+		res.Note = addNote(res.Note, fmt.Sprintf("approved exception expired on %s: %s (approved by %s)",
+			expired.Expires, expired.Reason, expired.ApprovedBy))
+	}
+	return res
+}
+
+// onOrBefore compares calendar days, so an exception still applies for the whole
+// of its expiry date whatever time of day the scan runs.
+func onOrBefore(today, expiry time.Time) bool {
+	y, m, d := today.Date()
+	return !time.Date(y, m, d, 0, 0, 0, 0, time.UTC).After(expiry)
+}
+
+// addNote keeps the note the check already produced and adds another.
+func addNote(existing, note string) string {
+	if existing == "" {
+		return note
+	}
+	return existing + "; " + note
 }
 
 func evalRegistry(c baseline.Check, r collect.Reading, res *Result) bool {

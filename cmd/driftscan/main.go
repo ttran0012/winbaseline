@@ -48,16 +48,18 @@ func main() {
 	}
 
 	host, _ := os.Hostname()
+	started := time.Now()
 	scan := report.Scan{
 		Host:            host,
-		StartedAt:       time.Now(),
+		StartedAt:       started,
 		Elevated:        elevated,
 		BaselineName:    b.Name,
 		BaselineVersion: b.Version,
 	}
 	c := collect.New()
 	for _, chk := range b.Checks {
-		scan.Results = append(scan.Results, compare.Evaluate(chk, c.Read(chk)))
+		res := compare.Evaluate(chk, c.Read(chk))
+		scan.Results = append(scan.Results, compare.ApplyExceptions(res, b.Exceptions, host, started))
 	}
 	scan.Summary = report.Summarize(scan.Results)
 
@@ -71,6 +73,6 @@ func main() {
 	fmt.Printf("\nResults saved: %s\nSHA-256: %s (linked to previous scan in %s)\n", path, hash, report.ChainLog)
 
 	if scan.Summary.Drift > 0 {
-		os.Exit(1) // lets Task Scheduler flag drift
+		os.Exit(1) // lets Task Scheduler flag drift; approved exceptions are not drift
 	}
 }

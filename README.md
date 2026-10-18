@@ -21,7 +21,7 @@ drifted from the approved value, and saves the results as evidence for later rev
 | Audit policy collector | Working (subcategories matched by GUID; requires administrator) |
 | Installed software collector | Working (prohibited-software patterns) |
 | Comparison and severity | Working |
-| Approved exceptions | Planned |
+| Approved exceptions | Working (reported as EXCEPTION, not drift, until the approval expires) |
 | Evidence storage | Working: JSON results hash-chained with SHA-256, never overwritten, `-verify` detects edits, deletions, and reordering |
 | HTML report | Planned |
 
@@ -39,6 +39,37 @@ go build -o driftscan.exe ./cmd/driftscan
 
 Exit codes: `0` all compliant, `1` drift found, `2` the scan could not run,
 `3` evidence verification failed. Task Scheduler can use these to flag problems.
+
+## Approved exceptions
+
+Sometimes a deviation is deliberate: a department needs a tool the baseline
+forbids, or a service cannot be disabled until a vendor system is replaced. A
+top-level `exceptions:` list records those approvals, and the scan reports the
+check as `EXCEPTION` rather than `DRIFT`.
+
+```yaml
+exceptions:
+  - check: SW-002                 # ID of a check in this baseline
+    hosts: [LAB-WIN11, LAB-WIN10] # computer names; omit to cover every host
+    reason: "Helpdesk uses TeamViewer until the Intune rollout finishes"
+    approved_by: "J. Lee, IT Manager"
+    expires: "2026-12-31"         # last day it applies, YYYY-MM-DD
+```
+
+`reason`, `approved_by`, and a valid `expires` date are required, and `check`
+must name a check in the same file; the baseline is rejected at load time
+otherwise, so a typo in a check ID cannot silently excuse nothing. Host names
+are matched case-insensitively.
+
+An exception only ever downgrades drift. `COMPLIANT` and `ERROR` results are
+left alone, and the deviation stays in the saved evidence with its reason and
+approver in the result note, so an auditor sees both the finding and who
+accepted it. Exceptions are counted separately in the summary and are not drift
+for the exit code, so a host with only approved deviations exits `0`.
+
+Approvals expire. From the day after `expires`, the check is drift again and the
+note records that the exception expired, which gives the yearly review a list of
+approvals to renew or retire rather than letting them accumulate.
 
 ## Evidence chain
 

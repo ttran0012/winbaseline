@@ -2,7 +2,9 @@ package compare
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ttran0012/winbaseline/internal/baseline"
 	"github.com/ttran0012/winbaseline/internal/collect"
@@ -69,6 +71,87 @@ func TestEvaluate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := Evaluate(tt.check, tt.read).Status; got != tt.want {
 				t.Errorf("status = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyExceptions(t *testing.T) {
+	// A fixed "today" keeps the expiry cases from depending on the real date.
+	today := time.Date(2026, 10, 18, 14, 30, 0, 0, time.Local)
+	const host = "LAB-WIN11"
+
+	approved := baseline.Exception{
+		Check:      "SVC-001",
+		Reason:     "vendor app needs the service until migration",
+		ApprovedBy: "J. Lee, IT Manager",
+		Expires:    "2026-12-31",
+	}
+	edit := func(f func(*baseline.Exception)) []baseline.Exception {
+		e := approved
+		f(&e)
+		return []baseline.Exception{e}
+	}
+	drift := Result{ID: "SVC-001", Status: Drift}
+
+	tests := []struct {
+		name       string
+		result     Result
+		exceptions []baseline.Exception
+		host       string
+		wantStatus string
+		wantNote   string // substring the note must contain; empty means the note is unchanged
+	}{
+		{"drift becomes an exception", drift, []baseline.Exception{approved}, host, Exception,
+			"approved exception: vendor app needs the service until migration (approved by J. Lee, IT Manager, expires 2026-12-31)"},
+		{"no exceptions leaves drift alone", drift, nil, host, Drift, ""},
+		{"exception for another check leaves drift alone", drift,
+			edit(func(e *baseline.Exception) { e.Check = "SVC-002" }), host, Drift, ""},
+
+		{"exception expiring today still applies", drift,
+			edit(func(e *baseline.Exception) { e.Expires = "2026-10-18" }), host, Exception, "approved exception:"},
+		{"exception that expired yesterday does not apply", drift,
+			edit(func(e *baseline.Exception) { e.Expires = "2026-10-17" }), host, Drift,
+			"approved exception expired on 2026-10-17"},
+		{"expiry note names the reason and approver", drift,
+			edit(func(e *baseline.Exception) { e.Expires = "2025-01-01" }), host, Drift,
+			"(approved by J. Lee, IT Manager)"},
+
+		{"empty host list covers this host", drift, []baseline.Exception{approved}, host, Exception, "approved exception:"},
+		{"listed host is covered", drift,
+			edit(func(e *baseline.Exception) { e.Hosts = []string{"LAB-WIN10", "LAB-WIN11"} }), host, Exception, "approved exception:"},
+		{"host match ignores case", drift,
+			edit(func(e *baseline.Exception) { e.Hosts = []string{"lab-win11"} }), host, Exception, "approved exception:"},
+		{"host outside the list keeps the drift", drift,
+			edit(func(e *baseline.Exception) { e.Hosts = []string{"LAB-WIN10"} }), host, Drift, ""},
+
+		{"compliant results are never changed", Result{ID: "SVC-001", Status: Compliant},
+			[]baseline.Exception{approved}, host, Compliant, ""},
+		{"error results are never changed", Result{ID: "SVC-001", Status: Error, Note: "access denied"},
+			[]baseline.Exception{approved}, host, Error, ""},
+
+		{"the note the check produced is kept", Result{ID: "SVC-001", Status: Drift, Note: "setting is not configured"},
+			[]baseline.Exception{approved}, host, Exception, "setting is not configured; approved exception:"},
+		{"an exception in force wins over an expired one", drift,
+			[]baseline.Exception{
+				{Check: "SVC-001", Reason: "old approval", ApprovedBy: "A. Nguyen", Expires: "2026-01-31"},
+				approved,
+			}, host, Exception, "approved exception: vendor app needs the service"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyExceptions(tt.result, tt.exceptions, tt.host, today)
+			if got.Status != tt.wantStatus {
+				t.Errorf("status = %s, want %s", got.Status, tt.wantStatus)
+			}
+			if tt.wantNote == "" {
+				if got.Note != tt.result.Note {
+					t.Errorf("note = %q, want it unchanged (%q)", got.Note, tt.result.Note)
+				}
+				return
+			}
+			if !strings.Contains(got.Note, tt.wantNote) {
+				t.Errorf("note = %q, want it to contain %q", got.Note, tt.wantNote)
 			}
 		})
 	}
