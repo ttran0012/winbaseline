@@ -55,7 +55,7 @@ func rank(order map[string]int, key string) int {
 // the capture first, then drift, errors, approved exceptions, and compliant
 // checks, each group most severe first. The saved JSON keeps the baseline's own
 // order, so the hashed evidence is untouched.
-func sortForReport(rs []compare.Result) []compare.Result {
+func SortForReport(rs []compare.Result) []compare.Result {
 	out := make([]compare.Result, len(rs))
 	copy(out, rs)
 	sort.SliceStable(out, func(i, j int) bool {
@@ -72,7 +72,7 @@ func sortForReport(rs []compare.Result) []compare.Result {
 
 // statusClass and severityClass map a value to a known CSS class, so an
 // unexpected status cannot become part of the page's markup.
-func statusClass(status string) string {
+func StatusClass(status string) string {
 	switch status {
 	case compare.Drift:
 		return "drift"
@@ -86,7 +86,7 @@ func statusClass(status string) string {
 	return "other"
 }
 
-func severityClass(severity string) string {
+func SeverityClass(severity string) string {
 	switch strings.ToLower(severity) {
 	case "high":
 		return "high"
@@ -98,7 +98,7 @@ func severityClass(severity string) string {
 	return "other"
 }
 
-func changeClass(change string) string {
+func ChangeClass(change string) string {
 	switch change {
 	case compare.Changed:
 		return "changed"
@@ -119,7 +119,7 @@ type htmlData struct {
 // WriteHTML renders the scan as a self-contained HTML page. Every value comes
 // from the system being scanned, so all of it is escaped by html/template.
 func WriteHTML(w io.Writer, s Scan, e ChainEntry) error {
-	return htmlTemplate.Execute(w, htmlData{Scan: s, Results: sortForReport(s.Results), Evidence: e})
+	return htmlTemplate.Execute(w, htmlData{Scan: s, Results: SortForReport(s.Results), Evidence: e})
 }
 
 // SaveHTML writes the HTML view next to the JSON evidence file it describes,
@@ -137,9 +137,9 @@ func SaveHTML(dir string, s Scan, e ChainEntry) (string, error) {
 }
 
 var htmlTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
-	"statusClass":   statusClass,
-	"severityClass": severityClass,
-	"changeClass":   changeClass,
+	"statusClass":   StatusClass,
+	"severityClass": SeverityClass,
+	"changeClass":   ChangeClass,
 	"upper":         strings.ToUpper,
 }).Parse(htmlSource))
 
@@ -147,13 +147,24 @@ var htmlTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
 // no web fonts, so the saved file renders the same offline and when attached to
 // an email. Status is always spelled out as well as colored, so the report is
 // still readable printed in black and white.
-const htmlSource = `<!DOCTYPE html>
+//
+// The styles sit in their own constant because the local dashboard serves them
+// as a stylesheet, so one setting looks the same in the emailed report and on
+// screen.
+const htmlSource = htmlPageHead + SharedCSS + htmlPageBody
+
+const htmlPageHead = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Configuration drift report - {{.Scan.Host}}</title>
 <style>
-  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #1a1a1a; background: #fff;
+`
+
+// SharedCSS styles a scan: the summary counts, the results table, and the
+// status, change and severity labels. The saved report inlines it; the
+// dashboard serves it as style.css and adds its own layout on top.
+const SharedCSS = `  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #1a1a1a; background: #fff;
          margin: 0; padding: 24px; font-size: 14px; line-height: 1.45; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   h2 { font-size: 15px; margin: 28px 0 8px; text-transform: uppercase; letter-spacing: .04em; color: #444; }
@@ -204,7 +215,9 @@ const htmlSource = `<!DOCTYPE html>
   footer dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 8px; }
   footer dt { color: #555; }
   footer dd { margin: 0; font-family: Consolas, "Courier New", monospace; word-break: break-all; }
-</style>
+`
+
+const htmlPageBody = `</style>
 </head>
 <body>
 

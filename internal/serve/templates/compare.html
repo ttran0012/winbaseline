@@ -1,0 +1,63 @@
+{{define "content"}}
+<h1>Compare two scans</h1>
+
+{{if not .Scans}}
+<p class="empty">No scans have been saved in this folder yet.</p>
+{{else}}
+
+<form method="get" action="/compare" class="filters">
+  <input type="hidden" name="host" value="{{.Host}}">
+  <div class="field">
+    <label for="a">Earlier scan</label>
+    <select id="a" name="a">
+      {{range .Scans}}<option value="{{.Entry.File}}"{{if and $.From (eq .Entry.File $.From.Entry.File)}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </div>
+  <div class="field">
+    <label for="b">Later scan</label>
+    <select id="b" name="b">
+      {{range .Scans}}<option value="{{.Entry.File}}"{{if and $.To (eq .Entry.File $.To.Entry.File)}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </div>
+  <div class="field">
+    <button type="submit">Compare</button>
+  </div>
+</form>
+
+{{if .Problem}}<p class="alert"><strong>Cannot compare</strong> &mdash; {{.Problem}}</p>{{end}}
+
+{{if and .From .To}}
+<p class="sub">Comparing <code>{{.From.Entry.File}}</code> ({{.From.Scan.StartedAt.Format "2006-01-02 15:04"}})
+with <code>{{.To.Entry.File}}</code> ({{.To.Scan.StartedAt.Format "2006-01-02 15:04"}}).
+{{.Comparison.Total}} check(s) differ.</p>
+
+{{range .Comparison.Groups}}{{template "group" .}}{{end}}
+{{end}}
+{{end}}
+{{end}}
+
+{{define "group"}}
+<section>
+<h2>{{.Title}} <span class="count">{{len .Rows}}</span></h2>
+{{if .Rows}}
+<table>
+<caption>{{.Note}}</caption>
+<thead><tr>
+  <th scope="col">ID</th><th scope="col">Severity</th><th scope="col">Setting</th>
+  <th scope="col">Was</th><th scope="col">Now</th>
+</tr></thead>
+<tbody>
+{{range .Rows}}<tr>
+  <td class="id">{{.ID}}</td>
+  <td><span class="sev {{severityClass .Severity}}">{{upper .Severity}}</span></td>
+  <td class="setting">{{.Title}}</td>
+  <td><span class="badge {{statusClass .FromStatus}}">{{.FromStatus}}</span>
+      {{if .FromActual}}<span class="where">{{.FromActual}}</span>{{end}}</td>
+  <td><span class="badge {{statusClass .ToStatus}}">{{.ToStatus}}</span>
+      {{if .ToActual}}<span class="where">{{.ToActual}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+{{else}}<p class="good">None.</p>{{end}}
+</section>
+{{end}}

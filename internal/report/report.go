@@ -14,6 +14,7 @@ import (
 // Scan is the saved record of one run.
 type Scan struct {
 	Host            string           `json:"host"`
+	ScannedFrom     string           `json:"scanned_from,omitempty"` // set when another computer read this one
 	StartedAt       time.Time        `json:"started_at"`
 	Elevated        bool             `json:"elevated"`
 	BaselineName    string           `json:"baseline_name"`

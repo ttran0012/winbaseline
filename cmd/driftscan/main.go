@@ -1,14 +1,21 @@
 //go:build windows
 
-// Command driftscan compares this computer's configuration with a baseline and
+// Command driftscan compares a computer's configuration with a baseline and
 // reports any drift. With -capture it instead records the configuration the
 // computer is approved with, so that later scans can also report what changed
-// since it was approved. It only reads settings; it never changes them.
+// since it was approved. With -hosts it reads other computers named in an
+// approved host list, over the network, as the account running it. With -serve
+// it reads nothing but the results already saved, and shows them as a dashboard
+// on the loopback interface.
 //
-// Exit codes: 0 nothing to report, 1 drift found, 2 the run could not finish,
-// 3 evidence verification failed, including a capture folder that could no
-// longer be trusted, 4 no drift, but something changed since the approved
-// capture.
+// It only ever reads settings. Nothing is changed on any computer it reads, and
+// nothing is installed on one.
+//
+// Exit codes: 0 nothing to report, 1 drift found, 2 the run could not finish or
+// a computer could not be read at all, 3 evidence verification failed,
+// including a capture folder that could no longer be trusted, 4 no drift, but
+// something changed since the approved capture. With -hosts the code is the
+// loudest of the computers scanned.
 package main
 
 import (
@@ -16,13 +23,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ttran0012/winbaseline/internal/baseline"
 	"github.com/ttran0012/winbaseline/internal/capture"
 	"github.com/ttran0012/winbaseline/internal/collect"
 	"github.com/ttran0012/winbaseline/internal/compare"
+	"github.com/ttran0012/winbaseline/internal/fleet"
 	"github.com/ttran0012/winbaseline/internal/report"
+	"github.com/ttran0012/winbaseline/internal/scan"
+	"github.com/ttran0012/winbaseline/internal/serve"
 )
 
 // run is what one invocation needs: the parsed flags and the facts about this
@@ -31,7 +42,7 @@ type run struct {
 	baseline   *baseline.Baseline
 	outDir     string
 	captureDir string
-	host       string
+	host       string // the computer this is running on
 	at         time.Time
 	elevated   bool
 	writeHTML  bool
@@ -43,13 +54,19 @@ func main() {
 	writeHTML := flag.Bool("html", true, "also write a readable HTML report beside each saved JSON result")
 	captureNow := flag.Bool("capture", false, "record this computer's current configuration as its approved capture, instead of scanning")
 	propose := flag.Bool("propose-exceptions", false, "with -capture, also write a draft exceptions list for every check that is drifting")
+	hostsPath := flag.String("hosts", "", "path to an approved host list; scans those computers over the network instead of this one")
+	onlyHost := flag.String("host", "", "with -hosts, scan only this computer from the list")
 	verify := flag.Bool("verify", false, "verify the saved evidence chains instead of scanning")
+	dashboard := flag.Bool("serve", false, "serve a read-only dashboard over the saved results instead of scanning")
+	addr := flag.String("addr", "127.0.0.1:8080", "address for -serve; must be a loopback address")
 	flag.Parse()
 
-	captureDir := filepath.Join(*outDir, capture.Dir)
-
 	if *verify {
-		verifyChains(*outDir, captureDir)
+		verifyChains(*outDir)
+		return
+	}
+	if *dashboard {
+		serveDashboard(*addr, *outDir, *baselinePath, *hostsPath, *writeHTML)
 		return
 	}
 
@@ -63,11 +80,27 @@ func main() {
 	r := run{
 		baseline:   b,
 		outDir:     *outDir,
-		captureDir: captureDir,
+		captureDir: filepath.Join(*outDir, capture.Dir),
 		host:       host,
 		at:         time.Now(),
 		elevated:   collect.IsElevated(),
 		writeHTML:  *writeHTML,
+	}
+
+	if *hostsPath != "" {
+		if *captureNow {
+			// A capture has to be able to read everything, and audit policy
+			// cannot be read from another computer at all.
+			fmt.Fprintln(os.Stderr, "error: -capture has to run on the computer being captured:")
+			fmt.Fprintln(os.Stderr, " ", collect.ErrAuditNeedsLocalAccess)
+			os.Exit(2)
+		}
+		r.scanFleet(*hostsPath, *onlyHost)
+		return
+	}
+	if *onlyHost != "" {
+		fmt.Fprintln(os.Stderr, "error: -host names a computer from the list given to -hosts, which approves scanning it")
+		os.Exit(2)
 	}
 
 	if *captureNow {
@@ -81,24 +114,75 @@ func main() {
 	r.scan()
 }
 
-// verifyChains checks the scans, and the captures when this computer has any.
-func verifyChains(outDir, captureDir string) {
-	n, err := report.Verify(outDir)
-	if err != nil {
-		fmt.Printf("EVIDENCE CHAIN BROKEN after %d valid scan(s): %v\n", n, err)
-		os.Exit(3)
+// serveDashboard runs the read-only dashboard until it is interrupted. The
+// address is checked before anything is printed, so a refused address never
+// leaves a URL on screen that nothing is listening on.
+func serveDashboard(addr, outDir, baselinePath, hostsPath string, writeHTML bool) {
+	if err := serve.CheckLoopback(addr); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
 	}
-	fmt.Printf("Evidence chain OK: %d scan(s) verified in %s\n", n, outDir)
+	s := serve.New(serve.Options{
+		Dir:          outDir,
+		BaselinePath: baselinePath,
+		HostsPath:    hostsPath,
+		WriteHTML:    writeHTML,
+	})
+	fmt.Printf("Dashboard: http://%s/\n", addr)
+	fmt.Printf("Evidence folder: %s\n", outDir)
+	if hostsPath == "" {
+		fmt.Println("No -hosts list given, so the dashboard can only scan this computer.")
+	} else {
+		fmt.Printf("Approved host list: %s\n", hostsPath)
+	}
+	fmt.Println("A scan started here reads settings and writes evidence. It changes nothing on any computer.")
+	fmt.Println("Press Ctrl+C to stop.")
+	if err := s.ListenAndServe(addr); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
+}
 
-	if _, err := os.Stat(filepath.Join(captureDir, report.ChainLog)); err != nil {
-		return // nothing has been captured yet
+// verifyChains checks every ledger under the results folder: the scans and
+// captures of this computer, and of each computer with a folder of its own.
+func verifyChains(outDir string) {
+	folders := []string{outDir}
+	if entries, err := os.ReadDir(outDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && e.Name() != capture.Dir {
+				folders = append(folders, filepath.Join(outDir, e.Name()))
+			}
+		}
 	}
-	m, err := report.Verify(captureDir)
-	if err != nil {
-		fmt.Printf("CAPTURE CHAIN BROKEN after %d valid capture(s): %v\n", m, err)
+
+	checked, ok := 0, true
+	for _, dir := range folders {
+		for _, c := range []struct{ dir, kind string }{
+			{dir, "scan"},
+			{filepath.Join(dir, capture.Dir), "capture"},
+		} {
+			if _, err := os.Stat(filepath.Join(c.dir, report.ChainLog)); err != nil {
+				continue // nothing recorded here
+			}
+			checked++
+			n, err := report.Verify(c.dir)
+			if err != nil {
+				fmt.Printf("%s CHAIN BROKEN in %s after %d valid %s(s): %v\n",
+					strings.ToUpper(c.kind), c.dir, n, c.kind, err)
+				ok = false
+				continue
+			}
+			fmt.Printf("%s chain OK: %d %s(s) verified in %s\n", c.kind, n, c.kind, c.dir)
+		}
+	}
+
+	if checked == 0 {
+		fmt.Printf("Nothing to verify: no %s found under %s\n", report.ChainLog, outDir)
 		os.Exit(3)
 	}
-	fmt.Printf("Capture chain OK: %d capture(s) verified in %s\n", m, captureDir)
+	if !ok {
+		os.Exit(3)
+	}
 }
 
 // recordCapture records this computer's configuration as approved.
@@ -148,85 +232,104 @@ func (r run) scan() {
 		fmt.Println("WARNING: not running as administrator; some settings (such as audit policy) cannot be read.")
 		fmt.Println()
 	}
-
-	scan := report.Scan{
-		Host:            r.host,
-		StartedAt:       r.at,
-		Elevated:        r.elevated,
-		BaselineName:    r.baseline.Name,
-		BaselineVersion: r.baseline.Version,
+	t := scan.Target{Dir: r.outDir}
+	s := scan.Read(t, r.options())
+	if s.CaptureStatus != "" {
+		fmt.Fprintln(os.Stderr, "warning: the approved capture was not used:", s.CaptureStatus)
 	}
+	report.Print(os.Stdout, s)
+	r.saveScan(t, s)
+	os.Exit(scan.ExitCode(s))
+}
 
-	// A capture that cannot be trusted must not stop the policy checks: a
-	// computer whose capture folder was tampered with is exactly the one worth
-	// scanning. The scan goes ahead and is saved as usual, the evidence records
-	// why no change was reported, and the run exits 3.
-	approved, err := capture.Latest(r.captureDir, r.host)
-	if err != nil {
-		scan.CaptureStatus = report.CaptureStatusRejected + err.Error()
-		fmt.Fprintln(os.Stderr, "warning: the approved capture was not used:", err)
+// options are the facts every scan this run takes records.
+func (r run) options() scan.Options {
+	return scan.Options{
+		Baseline:  r.baseline,
+		LocalHost: r.host,
+		At:        r.at,
+		Elevated:  r.elevated,
 	}
+}
 
-	var values map[string]string
-	if approved != nil {
-		values = approved.Capture.Values()
-		scan.Capture = &report.CaptureRef{
-			File:       approved.File,
-			Hash:       approved.Hash,
-			CapturedAt: approved.Capture.CapturedAt,
-		}
-	}
-
-	c := collect.New()
-	for _, chk := range r.baseline.Checks {
-		reading := c.Read(chk)
-		res := compare.ApplyExceptions(compare.Evaluate(chk, reading), r.baseline.Exceptions, r.host, r.at)
-		if approved != nil {
-			was, inCapture := values[chk.ID]
-			res = compare.ApplyChange(res, was, capture.Normalize(chk, reading), inCapture)
-		}
-		scan.Results = append(scan.Results, res)
-	}
-	scan.Summary = report.Summarize(scan.Results)
-
-	report.Print(os.Stdout, scan)
-
-	entry, err := report.Save(r.outDir, scan)
+// saveScan writes one computer's evidence and says where it went.
+func (r run) saveScan(t scan.Target, s report.Scan) {
+	saved, err := scan.Save(t, s, r.writeHTML)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error saving results:", err)
 		os.Exit(2)
 	}
 	fmt.Printf("\nResults saved: %s\nSHA-256: %s (linked to previous scan in %s)\n",
-		filepath.Join(r.outDir, entry.File), entry.Hash, report.ChainLog)
-
-	if r.writeHTML {
-		// The evidence is already saved and chained at this point, so a failed
-		// HTML view is reported but does not change the scan's exit code.
-		htmlPath, err := report.SaveHTML(r.outDir, scan, entry)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "warning:", err)
-		} else {
-			fmt.Printf("HTML report: %s\n", htmlPath)
-		}
-	}
-
-	if code := exitCode(scan); code != 0 {
-		os.Exit(code)
+		saved.JSONPath, saved.Entry.Hash, report.ChainLog)
+	switch {
+	case saved.HTMLErr != "":
+		// The evidence is already saved and chained, so a failed HTML view is
+		// reported but does not change the outcome.
+		fmt.Fprintln(os.Stderr, "warning:", saved.HTMLErr)
+	case saved.HTMLPath != "":
+		fmt.Printf("HTML report: %s\n", saved.HTMLPath)
 	}
 }
 
-// exitCode is what the run reports to Task Scheduler. Evidence that cannot be
-// trusted comes first, because until that is sorted out nobody can say what
-// changed on this computer; drift beats a change that policy still allows; and
-// approved exceptions are neither.
-func exitCode(s report.Scan) int {
-	switch {
-	case s.CaptureStatus != "":
-		return 3
-	case s.Summary.Drift > 0:
-		return 1
-	case s.Summary.Changed > 0:
-		return 4
+// scanFleet reads every computer the host list approves. Each one keeps its own
+// folder of evidence, with its own chain, because a chain has one writer.
+func (r run) scanFleet(hostsPath, only string) {
+	hosts, err := fleet.Load(hostsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
 	}
-	return 0
+	if err := hosts.Authorized(r.at); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
+	targets, err := hosts.Targets(only)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
+
+	a := hosts.Authorization
+	fmt.Printf("Scanning %d computer(s) from %s, as %s.\n", len(targets), hostsPath, collect.CurrentUser())
+	fmt.Printf("Approved by %s on %s, until %s: %s\n", a.ApprovedBy, a.Approved, a.Expires, a.Scope)
+	fmt.Printf("Baseline: %s v%s. Nothing on these computers is changed or installed.\n\n",
+		r.baseline.Name, r.baseline.Version)
+
+	worst := 0
+	for _, h := range targets {
+		t := scan.Target{Host: h.Name, Label: h.Label, Dir: filepath.Join(r.outDir, h.Name)}
+		s := scan.Read(t, r.options())
+		code := scan.ExitCode(s)
+		if code > worst {
+			worst = code
+		}
+		sum := s.Summary
+		fmt.Printf("%-20s %2d compliant  %2d drift  %2d exception  %2d error", h.Name,
+			sum.Compliant, sum.Drift, sum.Exceptions, sum.Errors)
+		if s.Capture != nil {
+			fmt.Printf("  %2d changed", sum.Changed)
+		}
+		fmt.Printf("   exit %d\n", code)
+		if sum.Total > 0 && sum.Errors == sum.Total {
+			fmt.Printf("%-20s   nothing could be read: %s\n", "", firstError(s))
+		}
+		if s.CaptureStatus != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s: the approved capture was not used: %s\n", h.Name, s.CaptureStatus)
+		}
+		r.saveScan(t, s)
+	}
+
+	fmt.Printf("\nEvidence saved under %s, one folder per computer. Verify it with -verify.\n", r.outDir)
+	os.Exit(worst)
+}
+
+// firstError is the first reason a check could not be read, for the one-line
+// summary of a computer that answered nothing.
+func firstError(s report.Scan) string {
+	for _, res := range s.Results {
+		if res.Status == compare.Error && res.Note != "" {
+			return res.Note
+		}
+	}
+	return "no reason recorded"
 }

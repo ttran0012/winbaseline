@@ -138,7 +138,7 @@ func TestSortForReport(t *testing.T) {
 		"compliant-high", "compliant-low",
 		"unknown",
 	}
-	got := sortForReport(in)
+	got := SortForReport(in)
 	for i, id := range want {
 		if got[i].ID != id {
 			t.Errorf("position %d = %s, want %s", i, got[i].ID, id)
@@ -282,7 +282,7 @@ func TestSortForReportPutsChangesFirst(t *testing.T) {
 		"drift-high-changed", "drift-low-changed", "compliant-low-changed",
 		"drift-high", "error-high",
 	}
-	got := sortForReport(in)
+	got := SortForReport(in)
 	for i, id := range want {
 		if got[i].ID != id {
 			t.Errorf("position %d = %s, want %s", i, got[i].ID, id)

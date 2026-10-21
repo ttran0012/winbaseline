@@ -3,9 +3,11 @@
 Windows configuration baseline and drift detection agent with tamper-evident,
 cryptographically signed scan evidence. Written in Go.
 
-**Windows Configuration Baseline and Drift Detection System** is a lightweight, read-only tool that scans a Windows computer against a documented
-security baseline (based on the CIS Benchmarks), reports every setting that has
-drifted from the approved value, and saves the results as evidence for later review.
+**Windows Configuration Baseline and Drift Detection System** is a lightweight tool that scans Windows
+computers against a documented security baseline (based on the CIS Benchmarks), reports every setting
+that has drifted from the approved value, and saves the results as tamper-evident evidence. It reads
+settings and writes evidence; it never changes a setting on any computer it reads, and installs
+nothing on one.
 
 · IT599 Capstone ·
 
@@ -26,6 +28,9 @@ drifted from the approved value, and saves the results as evidence for later rev
 | Proposed exceptions | Working: `-capture -propose-exceptions` drafts an exception per drifting check for a person to fill in |
 | Evidence storage | Working: JSON results hash-chained with SHA-256, never overwritten, `-verify` detects edits, deletions, and reordering |
 | HTML report | Working: one self-contained file per scan, written beside the JSON evidence (`-html=false` to skip) |
+| Local dashboard | Working: `-serve` on the loopback interface only, no scripts. Shows the saved evidence of every computer and can start a scan |
+| Remote scanning (agentless) | Working: `-hosts` reads approved computers over the network as the account running it, no credentials stored, nothing installed. Audit policy cannot be read this way |
+| Fleet dashboard and Start scan button | Working: the overview lists every computer worst-first, and a scan can be started from it |
 
 ## Build and run
 
@@ -39,12 +44,14 @@ go build -o driftscan.exe ./cmd/driftscan
 .\driftscan.exe -verify -out results
 ```
 
-Exit codes: `0` nothing to report, `1` drift found, `2` the run could not
-finish, `3` evidence verification failed, including a capture folder that could
-no longer be trusted, `4` no drift, but something changed since the approved
-capture. Task Scheduler can use these to flag problems. When more than one
-applies, the louder one wins: `3` (the evidence itself is in question) outranks
-`1` (drift), which outranks `4` (a change policy still allows).
+Exit codes: `0` nothing to report, `1` drift found, `2` the run could not finish
+or a computer answered nothing at all, `3` evidence verification failed,
+including a capture folder that could no longer be trusted, `4` no drift, but
+something changed since the approved capture. Task Scheduler can use these to
+flag problems. When more than one applies, the louder one wins: `2` (nothing
+could be read, so there are no findings) outranks `3` (the evidence itself is in
+question), which outranks `1` (drift), which outranks `4` (a change policy still
+allows). With `-hosts`, the code is the loudest of the computers scanned.
 
 Each scan also writes an HTML report beside its JSON file, with the same base
 name: `results\scan-HOST-20261018-121925-666.html`. It is one self-contained
@@ -89,6 +96,80 @@ something also changed since its capture).
 Approvals expire. From the day after `expires`, the check is drift again and the
 note records that the exception expired, which gives the yearly review a list of
 approvals to renew or retire rather than letting them accumulate.
+
+## Scanning other computers
+
+One computer at a time stops being useful at about the third server. `-hosts`
+reads other computers over the network, without installing anything on them:
+
+```powershell
+copy hosts.example.yaml hosts.yaml   # then fill in the authorization block
+.\driftscan.exe -hosts hosts.yaml -out results
+.\driftscan.exe -hosts hosts.yaml -host SQL-02 -out results
+```
+
+Each computer gets its own folder of evidence, `results\<computer>\`, with its
+own hash chain, because a chain has exactly one writer. `-verify` walks all of
+them.
+
+### No credentials are stored
+
+driftscan reads a remote computer through the Windows APIs that take a computer
+name: `RegConnectRegistry` for the registry, `OpenSCManager` for service start
+types, and `NetUserEnum` / `NetLocalGroupGetMembers` for the built-in accounts
+and the Administrators group. Those authenticate as **the account driftscan is
+running as**, through Kerberos or NTLM. So:
+
+- No password or credential is stored in a file, a registry key, or this
+  program. There is nothing to steal from it.
+- Nothing is installed or executed on the computer being read. It is not an
+  agent, and it is not remote code execution.
+- What a scan can see is exactly what that account was already allowed to see.
+  To widen or narrow the scan, change the account's rights — not a config file.
+
+On each computer being read, the account needs remote read access and the
+Remote Registry service has to be running (it is disabled by default on
+Windows 11; on servers, check your own policy before enabling it).
+
+**Audit policy is the exception.** Windows has no remote audit policy API —
+`auditpol.exe` takes no computer name and `AuditQuerySystemPolicy` answers only
+for the machine it runs on. Those checks come back `ERROR` on a remote scan with
+that reason in the note, rather than being quietly reported as compliant. To
+cover them, run driftscan on the computer itself as a scheduled task. For the
+same reason `-capture` refuses to run against a remote host: a capture that
+recorded the audit policy as "unreadable" would be approving a blind spot.
+
+### The host list is the authorization record
+
+There is no flag that scans an address, a range, or a wildcard. A computer can
+only be named in the host list, and the list will not load unless it records who
+approved the scanning, when, for what, and until when:
+
+```yaml
+authorization:
+  approved_by: "J. Lee, IT Manager"
+  approved: "2026-10-21"
+  expires: "2027-01-19"
+  scope: "quarterly CIS review of the lab and file servers"
+
+hosts:
+  - name: SQL-02
+    label: "database server"
+  - name: DC-01
+    label: "domain controller"
+    skip: true
+```
+
+`approved_by` or `scope` left as `TODO` is refused, the same way an unfinished
+exception is. Once `expires` passes, scanning stops until somebody renews it —
+an approval with no end date is a standing permission to read other people's
+servers, and this tool does not grant itself one. `-host` can only name a
+computer that is already in the list, and the approval is printed at the top of
+every run and recorded in the evidence.
+
+The difference between a configuration scanner and a reconnaissance tool is
+whose computers it was pointed at and who said yes, and that is a property of
+the design, not of the operator's memory.
 
 ## Approved capture
 
@@ -183,6 +264,64 @@ entries you are not approving, and paste what is left into the baseline's
 `exceptions:` list yourself. Checks already covered by an approved exception are
 not proposed again, and the baseline file is never edited for you.
 
+## Local dashboard
+
+The saved JSON and the per-scan HTML report answer "what did this one scan
+find?". Questions like "is this getting better or worse?" and "what changed
+between Tuesday and today?" need the scans together, so:
+
+```powershell
+.\driftscan.exe -serve -out results
+.\driftscan.exe -serve -addr 127.0.0.1:9000 -out results -baseline baseline\windows11-baseline.yaml
+```
+
+Add `-hosts hosts.yaml` to let the dashboard start scans of the computers that
+list approves. Then open <http://127.0.0.1:8080/>. The pages are:
+
+| Page | What it shows |
+|---|---|
+| Overview | Every computer, the ones needing attention first: never scanned, unreadable, stopped reporting, evidence that does not verify, drift, then the quiet ones. Also the **Start scan** form and the evidence chain status |
+| Scan progress | What a running scan is doing, computer by computer. It refreshes itself, with no script |
+| Scans | One computer's drift trend, what changed since its capture, and every scan in its ledger |
+| Scan | One scan's results, narrowable by status, severity, and check type through the query string: `?status=DRIFT&severity=high` |
+| Compare | Two of one computer's scans side by side: new drift, fixed, still drifting, changed values |
+| Baseline | The checks and the approved exceptions, marking any approval that has expired or expires within 30 days |
+| Verify evidence | Re-runs the hash chain check over every ledger: each computer's scans, and the captures beside them |
+
+### Why it is built this way
+
+A scan result is a list of the places a computer is weakest, and this dashboard
+can now start a scan, which makes it worth being careful with:
+
+- **Loopback only.** The server refuses to start unless `-addr` names a
+  loopback IP: `127.0.0.1` or `[::1]`. `0.0.0.0`, a LAN address, and a bare
+  `:8080` are all rejected, and so is `localhost`, since a name can be pointed
+  anywhere. It is not a setting to be trusted to remember — the tool will not do
+  it.
+- **GET everywhere but one path.** Every page is a GET. The single exception is
+  the form that starts a scan, a POST to `/scan/start` carrying a token from a
+  page this server rendered; a request without that token, or from another
+  origin, gets `403`. Anything else that is not a GET gets `405`.
+- **What a started scan may do.** It reads settings and writes evidence into the
+  results folder. It changes no setting on any computer, installs nothing, and
+  holds no credentials: a remote read happens as the account the dashboard runs
+  as. It will only name a computer the approved host list names, while that
+  approval is in date, and it runs one scan at a time, so reloading the page
+  cannot read every server twice.
+- **A scan is reachable only through the ledger.** A page names a scan by file
+  name, and that name has to appear in `chain.log` exactly as given, so no
+  request can reach a file the scanner did not write. Names that are not plain
+  file names are refused even if the ledger holds them. A file that no longer
+  matches its recorded hash is still shown, but labeled `UNVERIFIED`.
+- **Nothing is fetched from anywhere.** No scripts at all, no web fonts, no
+  CDN: the content security policy is `default-src 'none'` with styles only
+  from this server, so the dashboard works the same on a disconnected machine.
+  The filters and the compare page are plain GET forms, and the trend chart is
+  an SVG drawn in Go.
+- **Not color alone.** Every status, severity, and change is written out as
+  text next to its color, the tables use real headers and captions, and every
+  form field has a label.
+
 ## Evidence chain
 
 Each saved scan stores the SHA-256 hash of the previous scan, and `results\chain.log`
@@ -199,7 +338,10 @@ internal/baseline/    loads and validates the YAML baseline
 internal/collect/     read-only collectors (registry, services, accounts, firewall, audit, software)
 internal/compare/     compares observed values with expected values and with the capture
 internal/capture/     records the approved configuration and drafts proposed exceptions
+internal/fleet/       the approved host list for remote scans
 internal/report/      console table, JSON evidence files, HTML report, and the hash chain
+internal/scan/        reads one computer against the baseline and saves the evidence
+internal/serve/       local dashboard: shows the evidence, and starts scans
 baseline/             baseline definitions
 docs/                 design documents and diagrams
 ```

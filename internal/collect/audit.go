@@ -5,6 +5,7 @@ package collect
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,10 +13,22 @@ import (
 	"strings"
 )
 
+// ErrAuditNeedsLocalAccess is why audit policy is the one thing an agentless
+// scan cannot read. Windows exposes no remote audit policy API: auditpol.exe
+// has no computer option, and AuditQuerySystemPolicy answers only for the
+// machine it runs on. Reading it on another computer means running something
+// there, which this scanner deliberately does not do.
+var ErrAuditNeedsLocalAccess = errors.New(
+	"audit policy cannot be read remotely: Windows has no remote audit policy API, " +
+		"so this check needs driftscan run on the computer itself (for example as a scheduled task)")
+
 // auditSetting returns the inclusion setting ("Success and Failure", "Success",
 // "Failure", or "No Auditing") for an audit subcategory GUID. auditpol.exe runs
 // once per scan; it needs administrator rights.
 func (c *Collector) auditSetting(guid string) Reading {
+	if c.host != "" {
+		return Reading{Err: ErrAuditNeedsLocalAccess}
+	}
 	if !c.loaded["audit"] {
 		c.audit, c.auditErr = loadAuditPolicy()
 		c.loaded["audit"] = true
