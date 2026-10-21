@@ -19,9 +19,19 @@ Remove-NetRoute -InterfaceIndex $nic.ifIndex -DestinationPrefix '0.0.0.0/0' -Con
 New-NetIPAddress -InterfaceIndex $nic.ifIndex -IPAddress $IP -PrefixLength 24 -DefaultGateway 10.10.10.254 | Out-Null
 Set-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -ServerAddresses 10.10.10.10
 
-if (-not (Resolve-DnsName lab.atlas-tech.test -ErrorAction SilentlyContinue)) {
-  throw 'Cannot find the domain. Check that DC01 is running at 10.10.10.10.'
+# Earlier lookups through public DNS (used during Windows setup) leave a cached
+# "not found" answer for the lab domain, so clear the cache and give DNS a moment.
+Clear-DnsClientCache
+$found = $false
+foreach ($try in 1..10) {
+  if (Resolve-DnsName lab.atlas-tech.test -Server 10.10.10.10 -DnsOnly -ErrorAction SilentlyContinue) { $found = $true; break }
+  Start-Sleep -Seconds 2
 }
+if (-not $found) {
+  ipconfig /all | Select-String 'IPv4 Address|DNS Servers|Default Gateway'
+  throw 'Cannot find the domain. Check that DC01 is running at 10.10.10.10 and that "ping 10.10.10.10" works from this computer.'
+}
+Clear-DnsClientCache
 
 $cred = Get-Credential -Message 'Domain account that can join computers' -UserName 'LAB\Administrator'
 $join = @{

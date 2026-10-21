@@ -18,7 +18,7 @@ var uninstallKeys = []string{
 // softwareMatching lists installed programs whose display name matches pattern.
 func (c *Collector) softwareMatching(pattern string) Reading {
 	if !c.loaded["software"] {
-		c.software, c.softErr = installedSoftware()
+		c.software, c.softErr = c.installedSoftware()
 		c.loaded["software"] = true
 	}
 	if c.softErr != nil {
@@ -34,11 +34,13 @@ func (c *Collector) softwareMatching(pattern string) Reading {
 	return Reading{Present: len(matches) > 0, List: matches}
 }
 
-// installedSoftware returns the display names of programs installed for all users.
-func installedSoftware() ([]string, error) {
+// installedSoftware returns the display names of programs installed for all
+// users. Over the network this is one request per installed program, which is
+// the slowest part of a remote scan; it runs once per scan.
+func (c *Collector) installedSoftware() ([]string, error) {
 	seen := map[string]bool{}
 	for _, path := range uninstallKeys {
-		k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ENUMERATE_SUB_KEYS)
+		k, err := c.openHKLM(path, registry.ENUMERATE_SUB_KEYS)
 		if os.IsNotExist(err) {
 			continue // the 32-bit key does not exist on every system
 		}
@@ -51,7 +53,7 @@ func installedSoftware() ([]string, error) {
 			return nil, err
 		}
 		for _, s := range subs {
-			sk, err := registry.OpenKey(registry.LOCAL_MACHINE, path+`\`+s, registry.QUERY_VALUE)
+			sk, err := c.openHKLM(path+`\`+s, registry.QUERY_VALUE)
 			if err != nil {
 				continue
 			}

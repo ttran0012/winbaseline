@@ -10,12 +10,18 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-// ServiceStartType reads a service's start type (2 automatic, 3 manual, 4 disabled).
-// Only query rights are requested, so this works without administrator rights.
-func ServiceStartType(name string) Reading {
-	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+// serviceStartType reads a service's start type (2 automatic, 3 manual,
+// 4 disabled) from the computer this collector reads. Only connect and query
+// rights are asked for, so this works without administrator rights locally and
+// needs no more than read access remotely.
+func (c *Collector) serviceStartType(name string) Reading {
+	machine, err := c.machine()
 	if err != nil {
-		return Reading{Err: fmt.Errorf("open service manager: %w", err)}
+		return Reading{Err: err}
+	}
+	scm, err := windows.OpenSCManager(machine, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return Reading{Err: fmt.Errorf("open the service manager on %s: %w", c.where(), err)}
 	}
 	defer windows.CloseServiceHandle(scm)
 
@@ -38,6 +44,14 @@ func ServiceStartType(name string) Reading {
 		return Reading{Err: fmt.Errorf("query service: %w", err)}
 	}
 	return Reading{Present: true, Num: uint64(cfg.StartType), Text: startTypeName(cfg.StartType)}
+}
+
+// where names the computer being read, for error messages.
+func (c *Collector) where() string {
+	if c.host == "" {
+		return "this computer"
+	}
+	return c.host
 }
 
 func startTypeName(t uint32) string {

@@ -1,0 +1,66 @@
+{{define "content"}}
+<h1>Baseline</h1>
+
+{{if not .Baseline}}
+<p class="alert"><strong>No baseline</strong> &mdash; {{.Err}}</p>
+{{else}}
+<dl class="facts">
+  <dt>Name</dt><dd>{{.Baseline.Name}}</dd>
+  <dt>Version</dt><dd>{{.Baseline.Version}}</dd>
+  <dt>Benchmark</dt><dd>{{.Baseline.Benchmark}}</dd>
+  <dt>Checks</dt><dd>{{len .Baseline.Checks}}</dd>
+  <dt>Approved exceptions</dt><dd>{{len .Baseline.Exceptions}}</dd>
+</dl>
+
+<section>
+<h2>Approved exceptions <span class="count">{{len .Exceptions}}</span></h2>
+{{if .Exceptions}}
+<table>
+<caption>Deviations the organization has approved. An approval expiring within {{.Soon}} days is
+marked, because it has to be renewed or retired before it lapses.</caption>
+<thead><tr>
+  <th scope="col">Check</th><th scope="col">Hosts</th><th scope="col">Reason</th>
+  <th scope="col">Approved by</th><th scope="col">Expires</th><th scope="col">State</th>
+</tr></thead>
+<tbody>
+{{range .Exceptions}}<tr>
+  <td class="id">{{.Check}}</td>
+  <td>{{if .Hosts}}{{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}}{{else}}every host{{end}}</td>
+  <td>{{.Reason}}</td>
+  <td>{{.ApprovedBy}}</td>
+  <td>{{.Expires}}</td>
+  <td>
+    {{if eq .Expiry.Label "expired"}}<span class="badge drift">EXPIRED</span>
+    {{else if eq .Expiry.Label "soon"}}<span class="badge error">EXPIRES IN {{.Expiry.Days}} DAYS</span>
+    {{else}}<span class="badge compliant">IN FORCE</span>{{end}}
+  </td>
+</tr>
+{{end}}</tbody>
+</table>
+{{else}}<p class="empty">This baseline approves no exceptions.</p>{{end}}
+</section>
+
+<section>
+<h2>Checks <span class="count">{{len .Baseline.Checks}}</span></h2>
+<table>
+<caption>Every setting this baseline checks, in the order the scanner reads them.</caption>
+<thead><tr>
+  <th scope="col">ID</th><th scope="col">Severity</th><th scope="col">Type</th>
+  <th scope="col">Title</th><th scope="col">Where it lives</th><th scope="col">Expected</th>
+  <th scope="col">CIS</th>
+</tr></thead>
+<tbody>
+{{range .Baseline.Checks}}<tr>
+  <td class="id">{{.ID}}</td>
+  <td><span class="sev {{severityClass .Severity}}">{{upper .Severity}}</span></td>
+  <td>{{.Type}}</td>
+  <td>{{.Title}}</td>
+  <td class="setting"><span class="where">{{.Location}}</span></td>
+  <td>{{.Expected}}</td>
+  <td>{{.CIS}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</section>
+{{end}}
+{{end}}

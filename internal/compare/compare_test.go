@@ -156,3 +156,70 @@ func TestApplyExceptions(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyChange(t *testing.T) {
+	drift := Result{ID: "SVC-001", Status: Drift}
+	compliant := Result{ID: "SVC-001", Status: Compliant}
+
+	tests := []struct {
+		name       string
+		result     Result
+		approved   string
+		current    string
+		inCapture  bool
+		wantChange string
+		wantNote   string // substring the note must contain; empty means unchanged note
+	}{
+		{"same value is unchanged", compliant, "disabled", "disabled", true, Unchanged, ""},
+		{"different value is a change", compliant, "disabled", "manual", true, Changed,
+			`changed since capture: was "disabled", now "manual"`},
+		{"a check the capture predates is new", compliant, "", "disabled", false, NewCheck, ""},
+		{"drift can be unchanged since it was approved", drift, "manual", "manual", true, Unchanged, ""},
+		{"drift can also have changed again", drift, "manual", "automatic", true, Changed,
+			`was "manual", now "automatic"`},
+		{"a list value is quoted so the note stays readable", compliant,
+			"Administrator, itadmin", "Administrator, itadmin, vendor", true, Changed,
+			`was "Administrator, itadmin", now "Administrator, itadmin, vendor"`},
+		{"becoming unreadable is a change", compliant, "disabled", "unreadable", true, Changed,
+			`was "disabled", now "unreadable"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyChange(tt.result, tt.approved, tt.current, tt.inCapture)
+			if got.Change != tt.wantChange {
+				t.Errorf("change = %s, want %s", got.Change, tt.wantChange)
+			}
+			// Change is reported beside the status; it never replaces it.
+			if got.Status != tt.result.Status {
+				t.Errorf("status = %s, want it left as %s", got.Status, tt.result.Status)
+			}
+			if tt.wantNote == "" {
+				if got.Note != tt.result.Note {
+					t.Errorf("note = %q, want it unchanged (%q)", got.Note, tt.result.Note)
+				}
+				return
+			}
+			if !strings.Contains(got.Note, tt.wantNote) {
+				t.Errorf("note = %q, want it to contain %q", got.Note, tt.wantNote)
+			}
+		})
+	}
+}
+
+// A result can carry both an exception and a change: the note has to keep both,
+// because they answer different questions.
+func TestApplyChangeKeepsTheExceptionNote(t *testing.T) {
+	res := ApplyExceptions(Result{ID: "SVC-001", Status: Drift},
+		[]baseline.Exception{{Check: "SVC-001", Reason: "vendor app", ApprovedBy: "J. Lee", Expires: "2026-12-31"}},
+		"LAB-WIN11", time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC))
+	res = ApplyChange(res, "manual", "automatic", true)
+
+	if res.Status != Exception || res.Change != Changed {
+		t.Fatalf("status = %s, change = %s; want %s and %s", res.Status, res.Change, Exception, Changed)
+	}
+	for _, want := range []string{"approved exception: vendor app", `was "manual", now "automatic"`} {
+		if !strings.Contains(res.Note, want) {
+			t.Errorf("note %q does not contain %q", res.Note, want)
+		}
+	}
+}

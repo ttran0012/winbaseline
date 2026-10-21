@@ -4,3 +4,6 @@ dist/
 
 # scan results can contain sensitive configuration details - never commit them
 results/
+
+# host lists name real computers and are site-specific
+hosts.yaml

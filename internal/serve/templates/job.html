@@ -1,0 +1,61 @@
+{{define "head"}}{{if .Running}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
+
+{{define "content"}}
+<h1>Scan progress</h1>
+
+{{if not .Job}}
+<p class="empty">No scan has been started from this dashboard yet. <a href="/">Start one</a>.</p>
+{{else}}
+
+{{if .Running}}
+<p class="good"><strong>Running.</strong> {{.Job.Progress}} computer(s) done{{if .Job.Current}},
+reading <strong>{{.Job.Current}}</strong> now{{end}}. This page refreshes itself every few seconds.</p>
+{{else}}
+<p class="good"><strong>Finished</strong> {{.Job.FinishedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}},
+after {{.Job.Progress}} computer(s).</p>
+{{end}}
+
+{{if .Job.Err}}<p class="alert"><strong>The scan did not finish</strong> &mdash; {{.Job.Err}}</p>{{end}}
+
+<dl class="facts">
+  <dt>Started</dt><dd>{{.Job.StartedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}}</dd>
+  <dt>Computers asked for</dt><dd>{{range $i, $h := .Job.Targets}}{{if $i}}, {{end}}{{$h}}{{end}}</dd>
+</dl>
+
+<table>
+<caption>What each computer reported. The evidence is saved and chained exactly as a scan started
+from the command line would be.</caption>
+<thead><tr>
+  <th scope="col">Computer</th><th scope="col">Outcome</th><th scope="col">Checks</th>
+  <th scope="col">Compliant</th><th scope="col">Drift</th><th scope="col">Exceptions</th>
+  <th scope="col">Errors</th><th scope="col">Changed</th><th scope="col">Evidence</th>
+</tr></thead>
+<tbody>
+{{range .Job.Results}}<tr>
+  <td>{{.Host}}</td>
+  <td>
+    {{if .Err}}<span class="badge drift">NOT SAVED</span>
+    {{else if eq .Code 2}}<span class="badge drift">NOTHING READ</span>
+    {{else if eq .Code 3}}<span class="badge error">EVIDENCE SUSPECT</span>
+    {{else if eq .Code 1}}<span class="badge drift">DRIFT</span>
+    {{else if eq .Code 4}}<span class="badge changed">CHANGED</span>
+    {{else}}<span class="badge compliant">CLEAN</span>{{end}}
+    {{if .Note}}<span class="where">{{.Note}}</span>{{end}}
+    {{if .Err}}<span class="where">{{.Err}}</span>{{end}}
+  </td>
+  <td>{{.Summary.Total}}</td>
+  <td>{{.Summary.Compliant}}</td>
+  <td>{{.Summary.Drift}}</td>
+  <td>{{.Summary.Exceptions}}</td>
+  <td>{{.Summary.Errors}}</td>
+  <td>{{if .Captured}}{{.Summary.Changed}}{{else}}&mdash;{{end}}</td>
+  <td>{{if .File}}<code>{{.File}}</code>{{else}}&mdash;{{end}}</td>
+</tr>
+{{else}}
+<tr><td colspan="9">Nothing has finished yet.</td></tr>
+{{end}}</tbody>
+</table>
+
+<p><a href="/">Back to the overview</a></p>
+{{end}}
+{{end}}

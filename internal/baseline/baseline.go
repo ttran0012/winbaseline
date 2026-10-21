@@ -26,6 +26,11 @@ const (
 // ExpiryFormat is the date layout used by an exception's expires field.
 const ExpiryFormat = "2006-01-02"
 
+// Placeholder is what driftscan -propose-exceptions writes into a draft
+// exception where a person has to decide something. Validate refuses it, so a
+// draft cannot be pasted into the baseline before it has been read.
+const Placeholder = "TODO"
+
 // Baseline is a versioned set of configuration checks and the deviations the
 // organization has approved.
 type Baseline struct {
@@ -194,6 +199,12 @@ func (e Exception) validate(checks map[string]bool) error {
 	if e.ApprovedBy == "" {
 		return fmt.Errorf("missing approved_by")
 	}
+	if isPlaceholder(e.Reason) {
+		return fmt.Errorf("reason is still TODO: write why the deviation was accepted")
+	}
+	if isPlaceholder(e.ApprovedBy) {
+		return fmt.Errorf("approved_by is still TODO: name the person who accepted it")
+	}
 	if _, err := e.ExpiresOn(); err != nil {
 		return fmt.Errorf("expires must be a date like 2026-12-31 (got %q)", e.Expires)
 	}
@@ -253,6 +264,11 @@ func (c Check) validateType() error {
 }
 
 var guidPattern = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
+
+// isPlaceholder reports whether a field still holds the Placeholder value.
+func isPlaceholder(v string) bool {
+	return strings.EqualFold(strings.TrimSpace(v), Placeholder)
+}
 
 func oneOf(v string, allowed ...string) error {
 	for _, a := range allowed {

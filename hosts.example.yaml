@@ -1,0 +1,38 @@
+# Host list for driftscan -hosts.
+#
+# Copy this to hosts.yaml and fill it in. Every computer driftscan reads over
+# the network has to be named here: there is no flag that scans an address, a
+# range, or a wildcard, so the list is the whole authorized scope.
+#
+# driftscan reads these computers as the Windows account it runs as, through the
+# APIs that accept a computer name: the remote registry, the service control
+# manager, and the local user and group calls. No password is stored or sent by
+# driftscan, and nothing is installed on the computers it reads. What it can see
+# is what that account is already allowed to see.
+#
+# On each computer being read, the account needs remote read access, and the
+# Remote Registry service has to be running. Audit policy is the one thing that
+# cannot be read this way at all - Windows has no remote audit policy API - so
+# those checks come back unreadable on a remote scan. To cover them, run
+# driftscan on the computer itself as a scheduled task.
+
+# Who approved reading these computers, when, and for how long. driftscan
+# refuses to run while any of this is missing or still says TODO, and stops
+# scanning once the approval has expired.
+authorization:
+  approved_by: "TODO"           # the person who authorized this scanning
+  approved: "2026-10-21"        # the date they did, YYYY-MM-DD
+  expires: "2027-01-19"         # the last day the approval covers
+  scope: "TODO"                 # what they approved, in their words
+
+hosts:
+  - name: SQL-02
+    label: "database server"
+
+  - name: FILE-03
+    label: "file server"
+
+  # A computer that is listed and approved, but left out of this run.
+  - name: DC-01
+    label: "domain controller"
+    skip: true

@@ -1,0 +1,35 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{block "head" .}}{{end}}
+<title>{{.Title}} - winbaseline</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="dash">
+
+<header class="topbar">
+  <p class="brand">winbaseline <span class="ro">local dashboard</span></p>
+  <nav aria-label="Pages">
+    <a href="/"{{if eq .Nav "overview"}} class="here" aria-current="page"{{end}}>Overview</a>
+    <a href="/scans?host={{.Host}}"{{if eq .Nav "scans"}} class="here" aria-current="page"{{end}}>Scans</a>
+    <a href="/compare?host={{.Host}}"{{if eq .Nav "compare"}} class="here" aria-current="page"{{end}}>Compare</a>
+    <a href="/baseline"{{if eq .Nav "baseline"}} class="here" aria-current="page"{{end}}>Baseline</a>
+    <a href="/verify"{{if eq .Nav "verify"}} class="here" aria-current="page"{{end}}>Verify evidence</a>
+  </nav>
+</header>
+
+<main>
+{{template "content" .}}
+</main>
+
+<footer class="site">
+<p>Evidence in <code>{{.Dir}}</code>. This dashboard reads saved evidence, and can start a scan that
+reads settings and writes evidence. It changes no setting on any computer, installs nothing, holds no
+credentials, and is served on the loopback interface only.</p>
+</footer>
+
+</body>
+</html>
+{{end}}

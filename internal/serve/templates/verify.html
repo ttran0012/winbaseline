@@ -1,0 +1,42 @@
+{{define "content"}}
+<h1>Verify evidence</h1>
+<p class="sub">Every hash recomputed from the files on disk at {{.CheckedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}}.</p>
+
+{{if .Chain.Empty}}
+<p class="empty">Nothing has been saved under <code>{{.Dir}}</code> yet, so there is nothing to verify.</p>
+{{else if .Chain.OK}}
+<p class="good"><strong>Verified.</strong> {{.Chain.Records}} record(s) across
+{{len .Chain.Ledgers}} ledger(s) hash to what was recorded, each linked to the one before it.</p>
+{{else}}
+<p class="alert"><strong>Chain broken</strong> &mdash; {{.Chain.Problems}} of
+{{len .Chain.Ledgers}} ledger(s) do not verify.</p>
+{{end}}
+
+{{if .Chain.Ledgers}}
+<table>
+<caption>One ledger per folder: the scans of each computer, and the captures beside them.</caption>
+<thead><tr>
+  <th scope="col">Folder</th><th scope="col">Holds</th><th scope="col">Records</th><th scope="col">State</th>
+</tr></thead>
+<tbody>
+{{range .Chain.Ledgers}}<tr>
+  <td class="id">{{.Dir}}</td>
+  <td>{{.Kind}}s</td>
+  <td>{{.Records}}</td>
+  <td>{{if .Err}}<span class="badge drift">BROKEN</span><span class="where">{{.Err}}</span>
+      {{else}}<span class="badge compliant">VERIFIED</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+{{end}}
+
+<section>
+<h2>What this does and does not prove</h2>
+<p>A verified chain shows that no saved file has been edited, deleted, or reordered since it was
+written. It cannot show that a chain was never shortened: deleting the newest record together with
+its last line in <code>chain.log</code> leaves a shorter chain that still verifies, because nothing
+inside the folder records how long the chain was supposed to be. Closing that gap needs the latest
+hash kept somewhere this computer does not control.</p>
+<p><a href="/verify">Run the check again</a></p>
+</section>
+{{end}}

@@ -1,0 +1,52 @@
+
+/* The dashboard layout. The rules above this point are the saved report's own
+   styling, so a status, a severity and a results table look the same on screen
+   as they do in a report that was emailed or printed. */
+
+  body.dash { padding: 0; }
+  main { padding: 0 24px 32px; max-width: 1400px; }
+  section { margin-top: 10px; }
+
+  .topbar { border-bottom: 1px solid #ccc; background: #f6f6f6; padding: 12px 24px 0;
+            margin-bottom: 20px; }
+  .topbar .brand { margin: 0 0 8px; font-weight: 700; font-size: 15px; }
+  .topbar .ro { font-weight: 400; font-size: 12px; color: #555; border: 1px solid #bbb;
+                border-radius: 3px; padding: 1px 6px; margin-left: 6px; }
+  .topbar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+  .topbar nav a { display: block; padding: 7px 14px; text-decoration: none; color: #14407e;
+                  border: 1px solid transparent; border-bottom: none; font-size: 13px; }
+  .topbar nav a:hover { text-decoration: underline; }
+  .topbar nav a.here { background: #fff; border-color: #ccc; border-radius: 3px 3px 0 0;
+                       color: #1a1a1a; font-weight: 700; }
+
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  caption { text-align: left; color: #555; font-size: 12px; padding: 0 0 6px; }
+  .count { color: #555; font-weight: 400; }
+  .caption, .detail { color: #555; font-size: 12px; }
+  .detail { font-family: Consolas, "Courier New", monospace; word-break: break-word;
+            background: #f6f6f6; border: 1px solid #ddd; padding: 8px 10px; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+  code.hash { word-break: break-all; }
+
+  p.good { border: 1px solid #1f7a33; border-left-width: 8px; background: #eaf6ec; color: #19622a;
+           padding: 10px 14px; border-radius: 3px; }
+  p.empty { border: 1px dashed #bbb; background: #fafafa; color: #444; padding: 10px 14px;
+            border-radius: 3px; }
+
+  form.filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+                 border: 1px solid #ddd; background: #fafafa; border-radius: 3px;
+                 padding: 12px 14px; margin: 0 0 14px; }
+  form.filters .field { display: flex; flex-direction: column; gap: 3px; }
+  form.filters label { font-size: 12px; color: #444; text-transform: uppercase;
+                       letter-spacing: .04em; }
+  form.filters select, form.filters button { font: inherit; padding: 5px 8px; border: 1px solid #999;
+                                             border-radius: 3px; background: #fff; }
+  form.filters button { font-weight: 700; cursor: pointer; }
+  form.filters .field a { font-size: 12px; margin-left: 10px; }
+
+  svg.trend { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 3px;
+              background: #fff; }
+
+  footer.site { border-top: 1px solid #ccc; margin: 24px 0 0; padding: 12px 24px 24px;
+                color: #555; font-size: 12px; }
+  footer.site p { margin: 0; }
