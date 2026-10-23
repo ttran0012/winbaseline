@@ -193,17 +193,18 @@ func plainFileName(name string) bool {
 
 // computer is one row of the fleet overview.
 type computer struct {
-	Key      string // what the pages pass in ?host=
-	Host     string // the computer, as its own evidence names it
-	Label    string // from the host list, when it is listed there
-	Local    bool
-	Approved bool // named in the approved host list
-	Scans    int
-	Latest   *savedScan
-	Stale    bool
-	Since    string // how long ago the last scan was, in words
-	ChainErr string
-	Spark    template.HTML // the drift line the fleet table shows
+	Key        string // what the pages pass in ?host=
+	Host       string // the computer, as its own evidence names it
+	Label      string // from the host list, when it is listed there
+	Local      bool
+	Approved   bool // named in the approved host list
+	Scans      int
+	Latest     *savedScan
+	Stale      bool
+	Since      string // how long ago the last scan was, in words
+	ChainErr   string
+	HasCapture bool          // an approved baseline has been recorded for this computer
+	Spark      template.HTML // the drift line the fleet table shows
 }
 
 // The states a computer can be in, worst first. The order is the order the
@@ -217,6 +218,7 @@ const (
 	StateChainBroken  = "CHAIN BROKEN"
 	StateUnverified   = "UNVERIFIED"
 	StateCaptureGone  = "CAPTURE REJECTED"
+	StateNotApproved  = "NOT APPROVED"
 	StateDrift        = "DRIFT"
 	StateChanged      = "CHANGED"
 	StateClean        = "CLEAN"
@@ -235,6 +237,7 @@ var stateOrder = []string{
 	StateChainBroken,
 	StateUnverified,
 	StateCaptureGone,
+	StateNotApproved,
 	StateDrift,
 	StateChanged,
 	StateClean,
@@ -286,6 +289,11 @@ func (c computer) State() string {
 		return StateStale
 	case c.Partial():
 		return StatePartial
+	case !c.HasCapture:
+		// No approved baseline, so there is no answer to "what changed since
+		// sign-off" yet. Establishing one comes before chasing drift, which is
+		// why this ranks above it; the drift count still shows in its column.
+		return StateNotApproved
 	case c.Drift() > 0:
 		return StateDrift
 	case c.Latest.Scan.Summary.Changed > 0:
@@ -352,6 +360,7 @@ func (s *Server) fleet() []computer {
 		if listedHost, ok := listed[strings.ToLower(c.Host)]; ok {
 			c.Label, c.Approved = listedHost.Label, true
 		}
+		c.HasCapture = hasCapture(src.Dir)
 		// The line is drawn last, because which way it is coloured depends on
 		// the state, and the state depends on everything above.
 		c.Spark = sparkline(all, c.State() == StatePartial || c.State() == StateUnreadable)

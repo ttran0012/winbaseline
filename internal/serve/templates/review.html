@@ -1,0 +1,105 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Fleet</a> /
+  <a href="/computer?host={{.Host}}">{{.Saved.Scan.Host}}</a> /
+  Approve {{.Saved.Scan.StartedAt.Format "02 Jan, 15:04"}}</div>{{end}}
+
+{{define "content"}}
+<div class="head">
+  <div><h1>Approve as baseline</h1>
+    <div class="sub">{{.Saved.Scan.Host}} &middot; scan {{.Saved.Scan.StartedAt.Format "02 Jan 2006, 15:04"}}
+      &middot; <span class="mono">{{.Saved.Entry.File}}</span></div></div>
+  <div class="actions"><a class="btn" href="/scan?host={{.Host}}&amp;file={{.Saved.Entry.File}}">See all results</a></div>
+</div>
+
+<p class="sub">Approving records this reviewed scan as the configuration {{.Saved.Scan.Host}} is signed
+off with. Later scans report what changed against it. It reads nothing from the computer and changes
+no setting; it only saves what you approve here.</p>
+
+{{if not .Verified}}
+<div class="alert drift"><div><div class="t">This scan cannot be approved</div>
+  Its evidence does not verify, so it is not a sound basis for a baseline. Open
+  <a href="/verify">Verify evidence</a>, resolve the break, then approve a scan that checks out.</div></div>
+{{else}}
+
+<div class="grid g4 mb">
+  <div class="card kpi ok"><div class="k">Compliant</div><div class="v">{{.Saved.Scan.Summary.Compliant}}</div>
+    <div class="s">of {{.Saved.Scan.Summary.Total}} checks</div></div>
+  <div class="card kpi {{if .Saved.Scan.Summary.Drift}}drift{{end}}"><div class="k">Drift</div>
+    <div class="v">{{.Saved.Scan.Summary.Drift}}</div><div class="s">approved as-is unless fixed first</div></div>
+  <div class="card kpi {{if .Saved.Scan.Summary.Exceptions}}chg{{end}}"><div class="k">Exceptions</div>
+    <div class="v">{{.Saved.Scan.Summary.Exceptions}}</div><div class="s">already accepted</div></div>
+  <div class="card kpi {{if .Saved.Scan.Summary.Errors}}err{{end}}"><div class="k">Unreadable</div>
+    <div class="v">{{.Saved.Scan.Summary.Errors}}</div><div class="s">left out of the baseline</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h">Drift being approved <span class="muted">recorded as this computer's configuration</span></div>
+    {{if .Drifting}}
+    <table>
+      <thead><tr><th>Check</th><th>Severity</th><th>Setting</th><th>Expected</th><th>Now</th></tr></thead>
+      <tbody>
+      {{range .Drifting}}<tr>
+        <td class="mono">{{.ID}}</td>
+        <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+        <td>{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}</td>
+        <td><span class="val">{{.Expected}}</span></td>
+        <td><span class="val bad">{{.Actual}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}<div class="body"><div class="alert ok"><div><div class="t">No drift</div>
+      Every check in this scan meets the policy. You are approving a clean configuration.</div></div></div>{{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-h">Record the approval</div>
+    <div class="body">
+      <form class="form" method="post" action="/approve">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="host" value="{{.Host}}">
+        <input type="hidden" name="file" value="{{.Saved.Entry.File}}">
+        <div><label for="note">Approval note (required, up to {{.NoteMax}} characters)</label>
+          <input id="note" name="note" type="text" maxlength="{{.NoteMax}}" required>
+          <div class="note">Why this configuration is the approved one, in a line.</div></div>
+        <div><label class="check"><input type="checkbox" name="reviewed" value="1" required>
+          <span>I reviewed these results and approve them as the baseline for
+            {{.Saved.Scan.Host}}, as {{.ScannedAs}}.</span></label></div>
+        {{if .Unreadable}}
+        <div><label class="check"><input type="checkbox" name="exclude_errors" value="1" required>
+          <span>Leave out the {{len .Unreadable}} unreadable check(s)
+            ({{range $i, $r := .Unreadable}}{{if $i}}, {{end}}{{$r.ID}}{{end}}). They are not recorded
+            as the approved configuration.</span></label></div>
+        {{end}}
+        <div><label class="check"><input type="checkbox" name="draft_exceptions" value="1">
+          <span>Also draft exceptions for the drifting checks (a TODO list to fill in; the baseline
+            file is never edited).</span></label></div>
+        <div class="actions"><button class="btn primary" type="submit">Approve as baseline</button>
+          <a class="btn" href="/computer?host={{.Host}}">Cancel</a></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{{if .Unreadable}}
+<div class="card mt">
+  <div class="card-h">Unreadable checks <span class="muted">left out, not approved as "unreadable"</span></div>
+  <table>
+    <thead><tr><th>Check</th><th>Severity</th><th>Setting</th><th>Why</th></tr></thead>
+    <tbody>
+    {{range .Unreadable}}<tr>
+      <td class="mono">{{.ID}}</td>
+      <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+      <td>{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}</td>
+      <td class="note">{{.Note}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "footer"}}<footer class="site">Approving records a capture through the same hash chain as
+<code>driftscan -capture</code>. It reads no computer and never edits the baseline.</footer>{{end}}

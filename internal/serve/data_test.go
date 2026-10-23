@@ -11,16 +11,27 @@ import (
 	"github.com/ttran0012/winbaseline/internal/report"
 )
 
-// settled builds a computer whose latest scan verified and found nothing.
+// settled builds a computer whose latest scan verified and found nothing. It
+// has an approved baseline, so its state turns on the scan rather than on the
+// absence of one; the NOT APPROVED state has its own test.
 func settled(summary report.Summary) computer {
 	return computer{
-		Key:  "SQL-02",
-		Host: "SQL-02",
+		Key:        "SQL-02",
+		Host:       "SQL-02",
+		HasCapture: true,
 		Latest: &savedScan{
 			Verified: true,
 			Scan:     report.Scan{Host: "SQL-02", StartedAt: testNow.Add(-time.Hour), Summary: summary},
 		},
 	}
+}
+
+// notApproved is a computer whose scan verified but which has no approved
+// baseline yet.
+func notApproved(summary report.Summary) computer {
+	c := settled(summary)
+	c.HasCapture = false
+	return c
 }
 
 func TestComputerState(t *testing.T) {
@@ -58,6 +69,9 @@ func TestComputerState(t *testing.T) {
 		{"drift", settled(report.Summary{Total: 35, Compliant: 34, Drift: 1}), StateDrift},
 		{"changed since capture", withCapture, StateChanged},
 		{"clean", settled(report.Summary{Total: 35, Compliant: 35}), StateClean},
+		{"no approved baseline", notApproved(report.Summary{Total: 35, Compliant: 35}), StateNotApproved},
+		{"no baseline outranks the drift it would otherwise show",
+			notApproved(report.Summary{Total: 35, Compliant: 20, Drift: 15}), StateNotApproved},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,6 +105,12 @@ func TestPartialSortsAfterUnreadableAndBeforeDrift(t *testing.T) {
 	if !(rank(StateUnreadable) < rank(StatePartial) && rank(StatePartial) < rank(StateDrift)) {
 		t.Errorf("order is unreadable=%d partial=%d drift=%d; want unreadable before partial before drift",
 			rank(StateUnreadable), rank(StatePartial), rank(StateDrift))
+	}
+	// A computer with no approved baseline ranks before a drifting one: there is
+	// no "what changed" to chase until a baseline exists.
+	if !(rank(StateNotApproved) < rank(StateDrift)) {
+		t.Errorf("order is not-approved=%d drift=%d; want not-approved before drift",
+			rank(StateNotApproved), rank(StateDrift))
 	}
 
 	// And the fleet sort really does put them in that order.

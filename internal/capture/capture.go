@@ -44,7 +44,11 @@ type Capture struct {
 	BaselineName    string    `json:"baseline_name"`
 	BaselineVersion string    `json:"baseline_version"`
 	PreviousHash    string    `json:"previous_hash"`
-	Entries         []Entry   `json:"entries"`
+	// Approval is set when this capture was made by approving a reviewed scan
+	// rather than by -capture; it names who signed it off and the scan it came
+	// from. A capture read back from an older file simply has none.
+	Approval *Approval `json:"approval,omitempty"`
+	Entries  []Entry   `json:"entries"`
 }
 
 // Entry is the approved value of one check together with the policy status it

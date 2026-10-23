@@ -15,7 +15,7 @@ nothing on one.
 
 | Area | Status |
 |---|---|
-| Baseline format (YAML) | v0.2.0, 35 checks across 7 check types |
+| Baseline format (YAML) | v0.3.0, 90 checks across 7 check types (48 registry, 17 services, 3 accounts and groups, 3 firewall, 17 audit policy, 2 software) |
 | Registry collector | Working |
 | Services collector | Working (start type via Service Control Manager, query rights only) |
 | Accounts collector | Working (built-in Guest/Administrator found by RID; Administrators group members found by SID) |
@@ -34,8 +34,9 @@ nothing on one.
 
 ## Build and run
 
-Requires Go 1.27 or later on Windows. Run from an elevated (administrator)
-terminal to include the audit policy checks.
+Requires Go 1.27 or later on Windows; `go.mod` pins the patched `go1.27.2`
+toolchain, which Go downloads automatically. Run from an elevated
+(administrator) terminal to include the audit policy checks.
 
 ```powershell
 go test ./...
@@ -55,8 +56,8 @@ allows). With `-hosts`, the code is the loudest of the computers scanned.
 
 Each scan also writes an HTML report beside its JSON file, with the same base
 name: `results\scan-HOST-20261018-121925-666.html`. It is one self-contained
-file — inline styles, no scripts, no web fonts, no external links — so it can be
-emailed or attached to an audit folder and still render years later. Results are
+file, with inline styles, no scripts, no web fonts, and no external links, so it
+can be emailed or attached to an audit folder and still render years later. Results are
 listed with anything changed since the capture first, then drift, errors,
 approved exceptions, and compliant checks, most
 severe first within each group, and the status is always spelled out as well as
@@ -125,13 +126,13 @@ running as**, through Kerberos or NTLM. So:
 - Nothing is installed or executed on the computer being read. It is not an
   agent, and it is not remote code execution.
 - What a scan can see is exactly what that account was already allowed to see.
-  To widen or narrow the scan, change the account's rights — not a config file.
+  To widen or narrow the scan, change the account's rights, not a config file.
 
 On each computer being read, the account needs remote read access and the
 Remote Registry service has to be running (it is disabled by default on
 Windows 11; on servers, check your own policy before enabling it).
 
-**Audit policy is the exception.** Windows has no remote audit policy API —
+**Audit policy is the exception.** Windows has no remote audit policy API.
 `auditpol.exe` takes no computer name and `AuditQuerySystemPolicy` answers only
 for the machine it runs on. Those checks come back `ERROR` on a remote scan with
 that reason in the note, rather than being quietly reported as compliant. To
@@ -161,8 +162,8 @@ hosts:
 ```
 
 `approved_by` or `scope` left as `TODO` is refused, the same way an unfinished
-exception is. Once `expires` passes, scanning stops until somebody renews it —
-an approval with no end date is a standing permission to read other people's
+exception is. Once `expires` passes, scanning stops until somebody renews it.
+An approval with no end date is a standing permission to read other people's
 servers, and this tool does not grant itself one. `-host` can only name a
 computer that is already in the list, and the approval is printed at the top of
 every run and recorded in the evidence.
@@ -227,13 +228,13 @@ every remaining record hashes correctly and links to the one before it, and
 nothing inside the folder records how long the chain was supposed to be. A scan
 then compares against the older capture it finds, with no sign that a newer
 approval ever existed. The same hole applies to the scan ledger. Closing it
-needs an anchor the computer does not control — the latest hash copied to a
-write-once log, a signing service, or another machine — which is planned, and is
+needs an anchor the computer does not control, such as the latest hash copied to
+a write-once log, a signing service, or another machine. That is planned, and is
 the same gap described under [Evidence chain](#evidence-chain) below.
 
 ### When a capture cannot be trusted
 
-A tampered capture folder is no reason to stop watching the computer — it is a
+A tampered capture folder is no reason to stop watching the computer. It is a
 reason to look harder at it. So a scan that cannot trust the captures does not
 abort: the policy checks run and the evidence is saved as always, only without
 any change comparison. The run then
@@ -296,7 +297,7 @@ can now start a scan, which makes it worth being careful with:
 - **Loopback only.** The server refuses to start unless `-addr` names a
   loopback IP: `127.0.0.1` or `[::1]`. `0.0.0.0`, a LAN address, and a bare
   `:8080` are all rejected, and so is `localhost`, since a name can be pointed
-  anywhere. It is not a setting to be trusted to remember — the tool will not do
+  anywhere. It is not a setting to be trusted to remember. The tool will not do
   it.
 - **GET everywhere but one path.** Every page is a GET. The single exception is
   the form that starts a scan, a POST to `/scan/start` carrying a token from a
@@ -330,6 +331,16 @@ in `results\captures\`. `-verify` recomputes every hash in both and reports the
 first record that was edited, deleted, or taken out of order. Someone with write access
 who rewrites every file and the log together could still forge the chain; signing the
 latest hash or copying it off the computer is planned to close that gap.
+## Testing and quality
+
+| Test | How to run | Latest result |
+|---|---|---|
+| Unit and integration tests | `go test ./...` | All packages pass (Oct 23, 2026) |
+| Dependency vulnerabilities | `govulncheck ./...` | Go 1.27.0 had 8 standard-library vulnerabilities in `net/http` and `html/template` reachable from the dashboard and reports; fixed by pinning `toolchain go1.27.2`. Rescan: no vulnerabilities affect this code (Oct 23, 2026) |
+| Scan speed and memory | 5 local scans, 35 checks (baseline 0.2.0), `Start-Process` + peak working set | 0.08-0.15 s per scan, about 13.6 MB peak (target: under 60 s and 100 MB) |
+| Smoke test (lab) | `lab\guest\Invoke-SmokeTest.ps1` inside a lab VM | 3 deliberate changes, evidence chain, and tamper detection, with PASS/FAIL per step |
+| Drift detection (lab) | `lab\guest\Invoke-DriftTest.ps1` inside WS01 | 25 deliberate changes across all 7 check types; writes `results.csv` and a summary of detections, false alarms, and restore status |
+
 ## Project layout
 
 ```

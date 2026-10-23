@@ -38,9 +38,15 @@ type Result struct {
 	Location string `json:"location"`
 	Expected string `json:"expected"`
 	Actual   string `json:"actual"`
-	Status   string `json:"status"`
-	Change   string `json:"change,omitempty"` // empty unless the scan was compared with a capture
-	Note     string `json:"note,omitempty"`
+	// Normalized is the deterministic value a capture records, stored on the
+	// result so an approved baseline can be built from a saved scan without
+	// reading the computer again. It is the same text capture.Normalize
+	// produces; "not set" and "unreadable" are distinct values, so a missing
+	// setting is never mistaken for one that could not be read.
+	Normalized string `json:"normalized,omitempty"`
+	Status     string `json:"status"`
+	Change     string `json:"change,omitempty"` // empty unless the scan was compared with a capture
+	Note       string `json:"note,omitempty"`
 }
 
 // Evaluate compares one reading with its check.
