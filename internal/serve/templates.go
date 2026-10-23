@@ -39,6 +39,7 @@ var pages = parsePages(
 	"fleet.html",
 	"computer.html",
 	"results.html",
+	"review.html",
 	"compare.html",
 	"scanpage.html",
 	"baseline.html",

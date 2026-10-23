@@ -11,9 +11,23 @@
       {{with .Newest}}{{with .Scan.Capture}} &middot; approved capture {{.CapturedAt.Format "02 Jan"}}{{end}}{{end}}</div></div>
   <div class="actions">
     <a class="btn" href="/compare?host={{.Host}}">Compare scans</a>
-    <a class="btn primary" href="/scan">Scan now</a>
+    {{if .Newest}}<a class="btn primary" href="/approve?host={{.Host}}&amp;file={{.Newest.Entry.File}}">Approve as baseline</a>{{end}}
+    <a class="btn" href="/scan">Scan now</a>
   </div>
 </div>
+
+{{if .Approval}}
+<div class="alert {{if .Approval.Verified}}ok{{else}}drift{{end}}"><div>
+  <div class="t">Approved baseline: {{.Approval.When.Format "02 Jan 2006"}} by {{.Approval.By}}{{if .Approval.Note}} &mdash; {{.Approval.Note}}{{end}}</div>
+  {{if not .Approval.Verified}}This approval's file no longer matches the hash the ledger recorded for it.
+  {{else if .Approval.FromCapture}}Recorded with <code>driftscan -capture</code>.
+  {{else}}From scan <span class="mono">{{.Approval.SourceScan}}</span>.{{end}}
+  {{if .Approval.Excluded}} {{len .Approval.Excluded}} unreadable check(s) were left out.{{end}}</div></div>
+{{else}}
+<div class="alert warn"><div><div class="t">Not approved</div>
+  No baseline has been approved for this computer, so there is nothing to measure changes against.
+  {{if .Newest}}Review the latest scan and <a href="/approve?host={{.Host}}&amp;file={{.Newest.Entry.File}}">approve it as the baseline</a>.{{end}}</div></div>
+{{end}}
 
 {{if .Changed}}<div class="alert drift"><div>
   <div class="t">{{len .Changed}} setting(s) changed since this computer was approved{{with .Newest}}{{with .Scan.Capture}} on {{.CapturedAt.Format "02 Jan"}}{{end}}{{end}}</div>
@@ -120,4 +134,25 @@
   </div>
 </div>
 {{end}}
+
+<div class="card mt">
+  <div class="card-h">Approval history <span class="muted">every baseline signed off for this computer</span>
+    <span class="end">{{len .History}}</span></div>
+  {{if .History}}
+  <table>
+    <thead><tr><th>Approved</th><th>By</th><th>Note</th><th>From scan</th><th>Evidence</th></tr></thead>
+    <tbody>
+    {{range .History}}<tr>
+      <td>{{.When.Format "2006-01-02 15:04"}}</td>
+      <td>{{.By}}</td>
+      <td>{{if .FromCapture}}<span class="note">captured directly (driftscan -capture)</span>
+        {{else}}{{.Note}}{{if .Excluded}}<span class="where">{{len .Excluded}} unreadable check(s) excluded</span>{{end}}{{end}}</td>
+      <td class="mono">{{if .SourceScan}}{{.SourceScan}}{{else}}<span class="zero">&mdash;</span>{{end}}</td>
+      <td>{{if .Verified}}<span class="badge b-ok">VERIFIED</span>{{else}}<span class="badge b-drift">UNVERIFIED</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="body note">No baseline has been approved for this computer yet.</div>{{end}}
+</div>
 {{end}}

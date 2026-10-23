@@ -56,10 +56,10 @@ func results(drift bool, change string) []compare.Result {
 	svc := compare.Result{
 		ID: "SVC-001", Title: "UPnP Device Host is disabled", Severity: "low",
 		Location: "Service: upnphost", Expected: "disabled", Actual: "disabled",
-		Status: compare.Compliant, Change: change,
+		Normalized: "disabled", Status: compare.Compliant, Change: change,
 	}
 	if drift {
-		svc.Status, svc.Actual = compare.Drift, "manual"
+		svc.Status, svc.Actual, svc.Normalized = compare.Drift, "manual", "manual"
 	}
 	if change == compare.Changed {
 		svc.Note = `changed since capture: was "disabled", now "manual"`
@@ -68,7 +68,7 @@ func results(drift bool, change string) []compare.Result {
 		{
 			ID: "REG-001", Title: "User Account Control: Admin Approval Mode", Severity: "high",
 			Location: `HKLM\SOFTWARE\Policies\EnableLUA`, Expected: "1", Actual: "1",
-			Status: compare.Compliant, Change: firstNonEmpty(change, ""),
+			Normalized: "1", Status: compare.Compliant, Change: firstNonEmpty(change, ""),
 		},
 		svc,
 	}

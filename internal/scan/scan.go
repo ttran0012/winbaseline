@@ -77,9 +77,13 @@ func Read(t Target, o Options) report.Scan {
 	for _, chk := range o.Baseline.Checks {
 		reading := c.Read(chk)
 		res := compare.ApplyExceptions(compare.Evaluate(chk, reading), o.Baseline.Exceptions, host, o.At)
+		// Record the normalized value on every scan, so a later reviewer can
+		// approve this saved scan as the baseline without reading the computer
+		// again. It is also what a change is measured against.
+		res.Normalized = capture.Normalize(chk, reading)
 		if approved != nil {
 			was, inCapture := values[chk.ID]
-			res = compare.ApplyChange(res, was, capture.Normalize(chk, reading), inCapture)
+			res = compare.ApplyChange(res, was, res.Normalized, inCapture)
 		}
 		s.Results = append(s.Results, res)
 	}

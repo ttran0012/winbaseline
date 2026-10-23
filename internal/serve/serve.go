@@ -36,11 +36,15 @@ import (
 // startScanPath starts a scan.
 const startScanPath = "/scan/start"
 
-// writePaths are the only paths that accept a POST: starting a scan, and the
-// four buttons that change the approved host list. Every one of them goes
-// through checkTrustedForm first.
+// approvePath shows the review page on GET and records the approval on POST.
+const approvePath = "/approve"
+
+// writePaths are the only paths that accept a POST: starting a scan, approving
+// a scan as the baseline, and the four buttons that change the approved host
+// list. Every one of them goes through checkTrustedForm first.
 var writePaths = map[string]bool{
 	startScanPath:  true,
+	approvePath:    true,
 	addHostPath:    true,
 	skipHostPath:   true,
 	removeHostPath: true,
@@ -93,6 +97,7 @@ func New(o Options) *Server {
 	s.mux.HandleFunc("/computer", s.computerPage)
 	s.mux.HandleFunc("/scan", s.scanPage)
 	s.mux.HandleFunc(startScanPath, s.startScan)
+	s.mux.HandleFunc(approvePath, s.approve)
 	s.mux.HandleFunc(addHostPath, s.changeHosts)
 	s.mux.HandleFunc(skipHostPath, s.changeHosts)
 	s.mux.HandleFunc(removeHostPath, s.changeHosts)

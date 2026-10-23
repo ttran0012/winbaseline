@@ -11,6 +11,7 @@
   <div class="actions">
     {{if .HTMLReport}}<span class="note">Saved report: <span class="mono">{{.HTMLReport}}</span></span>{{end}}
     <a class="btn" href="/compare?host={{.Host}}">Compare scans</a>
+    {{if not .Saved.Err}}<a class="btn primary" href="/approve?host={{.Host}}&amp;file={{.Saved.Entry.File}}">Approve as baseline</a>{{end}}
   </div>
 </div>
 

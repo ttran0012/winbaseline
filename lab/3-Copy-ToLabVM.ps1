@@ -15,9 +15,10 @@ foreach ($n in $need) {
 }
 
 $files = @(Get-ChildItem "$root\guest\*.ps1") + (Get-Item "$root\driftscan.exe") + @(Get-ChildItem "$root\baseline\*.yaml")
+if (Test-Path "$root\hosts.yaml") { $files += Get-Item "$root\hosts.yaml" }   # optional: the lab's approved scan scope
 foreach ($name in $VMName) {
   foreach ($f in $files) {
-    $dest = if ($f.Extension -eq '.yaml') { "C:\WinBaseline\baseline\$($f.Name)" } else { "C:\WinBaseline\$($f.Name)" }
+    $dest = if ($f.Extension -eq '.yaml' -and $f.Name -ne 'hosts.yaml') { "C:\WinBaseline\baseline\$($f.Name)" } else { "C:\WinBaseline\$($f.Name)" }
     Copy-VMFile -Name $name -SourcePath $f.FullName -DestinationPath $dest -CreateFullPath -FileSource Host -Force
   }
   Write-Host "Copied $($files.Count) files from $root to $name at C:\WinBaseline" -ForegroundColor Green
