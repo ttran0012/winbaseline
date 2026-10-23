@@ -7,3 +7,5 @@ results/
 
 # host lists name real computers and are site-specific
 hosts.yaml
+hosts.yaml.bak
+hosts-changes.log

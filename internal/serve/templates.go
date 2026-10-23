@@ -5,8 +5,6 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
-
-	"github.com/ttran0012/winbaseline/internal/report"
 )
 
 // The pages and the stylesheet are built into the binary, so the dashboard has
@@ -18,29 +16,31 @@ var templateFiles embed.FS
 //go:embed static/dashboard.css
 var dashboardCSS []byte
 
-// styleSheet is what /style.css serves: the report's own styling for statuses
-// and results tables, plus the layout the dashboard adds around it. One setting
-// then looks the same on screen as it does in a saved report.
-var styleSheet = append(append([]byte(nil), report.SharedCSS...), dashboardCSS...)
+// styleSheet is what /style.css serves. The saved HTML report keeps its own
+// styles inline, because a file that gets emailed has to carry them; the
+// dashboard has the design system in docs/ui-mockup.html instead.
+var styleSheet = dashboardCSS
 
-// funcs are the few helpers the pages need. The class helpers come from the
-// report package, so a status cannot be styled one way in a saved report and
-// another way here.
+// funcs are the helpers the pages need: which badge class a value wears, and
+// upper-casing for the short labels.
 var funcs = template.FuncMap{
-	"statusClass":   report.StatusClass,
-	"severityClass": report.SeverityClass,
-	"changeClass":   report.ChangeClass,
-	"upper":         strings.ToUpper,
+	"badgeStatus": badgeStatus,
+	"badgeChange": badgeChange,
+	"badgeState":  badgeState,
+	"sevClass":    severityClass,
+	"kpiTone":     kpiTone,
+	"upper":       strings.ToUpper,
+	"lower":       strings.ToLower,
 }
 
 // pages holds each page already parsed together with the layout, so a request
 // never parses a template.
 var pages = parsePages(
-	"overview.html",
-	"job.html",
-	"scans.html",
-	"scan.html",
+	"fleet.html",
+	"computer.html",
+	"results.html",
 	"compare.html",
+	"scanpage.html",
 	"baseline.html",
 	"verify.html",
 )

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"github.com/ttran0012/winbaseline/internal/baseline"
 	"github.com/ttran0012/winbaseline/internal/capture"
 	"github.com/ttran0012/winbaseline/internal/compare"
+	"github.com/ttran0012/winbaseline/internal/fleet"
 	"github.com/ttran0012/winbaseline/internal/report"
 )
 
@@ -201,6 +203,41 @@ type computer struct {
 	Stale    bool
 	Since    string // how long ago the last scan was, in words
 	ChainErr string
+	Spark    template.HTML // the drift line the fleet table shows
+}
+
+// The states a computer can be in, worst first. The order is the order the
+// fleet table sorts by, and the badge is read off the same list, so what the
+// table says and how it sorts cannot drift apart.
+const (
+	StateNeverScanned = "NEVER SCANNED"
+	StateUnreadable   = "UNREADABLE"
+	StatePartial      = "PARTIAL"
+	StateStale        = "STOPPED REPORTING"
+	StateChainBroken  = "CHAIN BROKEN"
+	StateUnverified   = "UNVERIFIED"
+	StateCaptureGone  = "CAPTURE REJECTED"
+	StateDrift        = "DRIFT"
+	StateChanged      = "CHANGED"
+	StateClean        = "CLEAN"
+)
+
+// stateOrder is how urgently each state needs looking at. A computer nobody has
+// scanned, or that answered nothing, comes first; a scan that only half
+// answered comes next, because a partly read computer is partly unknown; then a
+// computer that stopped reporting, then evidence that does not hold up, then
+// the findings themselves.
+var stateOrder = []string{
+	StateNeverScanned,
+	StateUnreadable,
+	StatePartial,
+	StateStale,
+	StateChainBroken,
+	StateUnverified,
+	StateCaptureGone,
+	StateDrift,
+	StateChanged,
+	StateClean,
 }
 
 // Drift is the drift count of the last scan, or 0 when there is none.
@@ -221,23 +258,64 @@ func (c computer) Unreadable() bool {
 	return s.Total > 0 && s.Errors == s.Total
 }
 
-// Attention sorts the computers that need looking at to the top: never scanned
-// or unreadable first, then stale, then broken evidence, then drift, then a
-// change policy still allows, then the quiet ones.
-func (c computer) Attention() int {
-	switch {
-	case c.Latest == nil || c.Unreadable():
-		return 0
-	case c.Stale:
-		return 1
-	case c.ChainErr != "" || c.Latest.Scan.CaptureStatus != "" || !c.Latest.Verified:
-		return 2
-	case c.Drift() > 0:
-		return 3
-	case c.Latest.Scan.Summary.Changed > 0:
-		return 4
+// Partial reports whether the scan was saved but some checks could not be read:
+// a remote scan cannot read audit policy, for instance, so part of the picture
+// is missing even though the rest of it is fine. It is not drift, and it is not
+// nothing.
+func (c computer) Partial() bool {
+	if c.Latest == nil || c.Unreadable() {
+		return false
 	}
-	return 5
+	return c.Latest.Scan.Summary.Errors > 0
+}
+
+// State is the one word the fleet table shows for this computer.
+func (c computer) State() string {
+	switch {
+	case c.Latest == nil:
+		return StateNeverScanned
+	case c.Unreadable():
+		return StateUnreadable
+	case c.ChainErr != "":
+		return StateChainBroken
+	case !c.Latest.Verified:
+		return StateUnverified
+	case c.Latest.Scan.CaptureStatus != "":
+		return StateCaptureGone
+	case c.Stale:
+		return StateStale
+	case c.Partial():
+		return StatePartial
+	case c.Drift() > 0:
+		return StateDrift
+	case c.Latest.Scan.Summary.Changed > 0:
+		return StateChanged
+	}
+	return StateClean
+}
+
+// Attention is where this computer's state sits in the order above.
+func (c computer) Attention() int {
+	state := c.State()
+	for i, s := range stateOrder {
+		if s == state {
+			return i
+		}
+	}
+	return len(stateOrder)
+}
+
+// Settled reports whether there is nothing to do about this computer.
+func (c computer) Settled() bool { return c.State() == StateClean }
+
+// severityClass is the class a severity wears. The word itself is always
+// printed beside it.
+func severityClass(severity string) string {
+	switch strings.ToLower(severity) {
+	case "high", "medium", "low":
+		return strings.ToLower(severity)
+	}
+	return ""
 }
 
 // fleet reads the latest state of every computer with evidence, plus every
@@ -271,16 +349,27 @@ func (s *Server) fleet() []computer {
 		if c.Host == "" {
 			c.Host = "this computer"
 		}
-		if label, ok := listed[strings.ToLower(c.Host)]; ok {
-			c.Label, c.Approved = label, true
+		if listedHost, ok := listed[strings.ToLower(c.Host)]; ok {
+			c.Label, c.Approved = listedHost.Label, true
 		}
+		// The line is drawn last, because which way it is coloured depends on
+		// the state, and the state depends on everything above.
+		c.Spark = sparkline(all, c.State() == StatePartial || c.State() == StateUnreadable)
 		seen[strings.ToLower(c.Host)] = true
 		out = append(out, c)
 	}
 
-	for host, label := range listed {
-		if !seen[host] {
-			out = append(out, computer{Key: host, Host: host, Label: label, Approved: true})
+	// A computer that was approved and never scanned is a gap, not an absence
+	// of news. Its name is shown as the host list writes it, not as it was
+	// looked up.
+	for key, listedHost := range listed {
+		if !seen[key] {
+			out = append(out, computer{
+				Key:      listedHost.Name,
+				Host:     listedHost.Name,
+				Label:    listedHost.Label,
+				Approved: true,
+			})
 		}
 	}
 
@@ -311,17 +400,19 @@ func since(age time.Duration) string {
 	}
 }
 
-// approvedHosts is the host list by lowercased name, or empty when no list is
-// configured. The dashboard will not scan a computer that is not in it.
-func (s *Server) approvedHosts() map[string]string {
-	out := map[string]string{}
+// approvedHosts is the host list keyed by lowercased name, because Windows
+// treats computer names case-insensitively, with each entry kept as written.
+// It is empty when no list is configured; the dashboard will not scan a
+// computer that is not in it.
+func (s *Server) approvedHosts() map[string]fleet.Host {
+	out := map[string]fleet.Host{}
 	h, err := s.hosts()
 	if err != nil {
 		return out
 	}
 	for _, host := range h.Hosts {
 		if !host.Skip {
-			out[strings.ToLower(host.Name)] = host.Label
+			out[strings.ToLower(host.Name)] = host
 		}
 	}
 	return out
@@ -382,11 +473,13 @@ type filter struct {
 	Status   string
 	Severity string
 	Type     string
+	Change   string // only CHANGED: "what moved since the capture" is its own question
 }
 
 var (
 	knownStatus   = []string{compare.Drift, compare.Exception, compare.Error, compare.Compliant}
 	knownSeverity = []string{"high", "medium", "low"}
+	knownChange   = []string{compare.Changed}
 	knownTypes    = []string{
 		baseline.TypeRegistry, baseline.TypeService, baseline.TypeAccount, baseline.TypeGroup,
 		baseline.TypeFirewall, baseline.TypeAudit, baseline.TypeSoftware,
@@ -415,11 +508,14 @@ func readFilter(q map[string][]string) filter {
 		Status:   pick(first("status"), knownStatus, strings.ToUpper),
 		Severity: pick(first("severity"), knownSeverity, strings.ToLower),
 		Type:     pick(first("type"), knownTypes, strings.ToLower),
+		Change:   pick(first("change"), knownChange, strings.ToUpper),
 	}
 }
 
 // Active reports whether anything is being hidden.
-func (f filter) Active() bool { return f.Status != "" || f.Severity != "" || f.Type != "" }
+func (f filter) Active() bool {
+	return f.Status != "" || f.Severity != "" || f.Type != "" || f.Change != ""
+}
 
 // match reports whether one result is in the filter. types maps a check ID to
 // the type the baseline gives it, since a result does not record its own.
@@ -431,6 +527,9 @@ func (f filter) match(r compare.Result, types map[string]string) bool {
 		return false
 	}
 	if f.Type != "" && types[r.ID] != f.Type {
+		return false
+	}
+	if f.Change != "" && r.Change != f.Change {
 		return false
 	}
 	return true

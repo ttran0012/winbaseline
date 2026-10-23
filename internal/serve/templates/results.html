@@ -1,0 +1,83 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Fleet</a> /
+  <a href="/computer?host={{.Host}}">{{.Saved.Scan.Host}}</a> /
+  Scan {{.Saved.Scan.StartedAt.Format "02 Jan, 15:04"}}</div>{{end}}
+
+{{define "content"}}
+<div class="head">
+  <div><h1>Scan results</h1>
+    <div class="sub">{{.Saved.Scan.Host}} &middot; {{.Saved.Scan.StartedAt.Format "02 Jan 2006, 15:04"}}
+      &middot; {{.Saved.Scan.Summary.Total}} checks &middot;
+      <span class="mono">{{.Saved.Entry.File}}</span></div></div>
+  <div class="actions">
+    {{if .HTMLReport}}<span class="note">Saved report: <span class="mono">{{.HTMLReport}}</span></span>{{end}}
+    <a class="btn" href="/compare?host={{.Host}}">Compare scans</a>
+  </div>
+</div>
+
+{{if .Saved.Err}}
+<div class="alert drift"><div><div class="t">Unreadable</div>{{.Saved.Entry.File}} {{.Saved.Err}}</div></div>
+{{else}}
+
+{{if not .Saved.Verified}}<div class="alert drift"><div><div class="t">Unverified evidence file</div>
+  {{.Saved.Entry.File}} no longer matches the hash the ledger recorded for it.</div></div>{{end}}
+{{if .Saved.Scan.CaptureStatus}}<div class="alert warn"><div><div class="t">Capture not used</div>
+  {{.Saved.Scan.CaptureStatus}}. This scan reports no changes.</div></div>{{end}}
+
+<nav class="tabs" aria-label="This computer">
+  <a href="/computer?host={{.Host}}">Summary</a>
+  <span class="here" aria-current="page">Latest results <span class="n">{{.Saved.Scan.Summary.Total}}</span></span>
+  <a href="/compare?host={{.Host}}">History &amp; compare <span class="n">{{.Scans}} scans</span></a>
+</nav>
+
+<div class="card">
+  <div class="chips" role="group" aria-label="Filters">
+    <span class="lbl">Status</span>
+    {{range .Chips.Status}}<a class="chip{{if .On}} on{{end}}" href="{{.URL}}">{{.Label}}{{if .Show}} {{.Count}}{{end}}</a>{{end}}
+    <span class="sep"></span>
+    <span class="lbl">Severity</span>
+    {{range .Chips.Severity}}<a class="chip{{if .On}} on{{end}}" href="{{.URL}}">{{.Label}}</a>{{end}}
+  </div>
+
+  {{if .BaselineErr}}<div class="body"><p class="note">Grouping by check type needs the baseline
+    file: {{.BaselineErr}}.</p></div>{{end}}
+
+  {{range .Groups}}
+  <details class="group"{{if .Open}} open{{end}}>
+    <summary>{{.Title}}
+      <span class="end">
+        {{if .Drift}}<span class="badge b-drift">{{.Drift}} DRIFT</span>{{end}}
+        {{if .Changed}}<span class="badge b-chg">{{.Changed}} CHANGED</span>{{end}}
+        {{if .Errors}}<span class="badge b-error">{{.Errors}} UNREADABLE</span>{{end}}
+        {{if .Exceptions}}<span class="badge b-exc">{{.Exceptions}} EXCEPTION</span>{{end}}
+        {{if .Compliant}}<span class="badge b-ok">{{.Compliant}} OK</span>{{end}}
+      </span></summary>
+    <table>
+      <thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Setting</th>
+        <th>Expected</th><th>Actual</th></tr></thead>
+      <tbody>
+      {{range .Rows}}<tr>
+        <td class="mono">{{.ID}}</td>
+        <td><span class="badge {{badgeStatus .Status}}">{{.Status}}</span>
+          {{if eq .Change "CHANGED"}} <span class="badge b-chg">CHANGED</span>{{end}}</td>
+        <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+        <td>{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}
+          {{if .Note}}<span class="where">{{.Note}}</span>{{end}}</td>
+        <td><span class="val">{{.Expected}}</span></td>
+        <td>{{if eq .Status "COMPLIANT"}}<span class="val">{{.Actual}}</span>
+          {{else}}<span class="val bad">{{.Actual}}</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </details>
+  {{else}}
+  <div class="body"><p class="note">No result matches this filter.
+    <a href="/scan?host={{.Host}}&amp;file={{.Saved.Entry.File}}">Show all
+    {{.Saved.Scan.Summary.Total}}</a>.</p></div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "footer"}}<footer class="site">Groups open when they hold something to act on. The filters are
+plain links, so narrowing this table needs no script and the address says what is being shown.</footer>{{end}}

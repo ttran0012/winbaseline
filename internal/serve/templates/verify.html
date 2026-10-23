@@ -1,42 +1,60 @@
 {{define "content"}}
-<h1>Verify evidence</h1>
-<p class="sub">Every hash recomputed from the files on disk at {{.CheckedAt.Format "Mon, 02 Jan 2006 15:04:05 MST"}}.</p>
+<div class="head">
+  <div><h1>Evidence</h1>
+    <div class="sub">Every saved scan and capture is hash-chained. Verifying recomputes every
+      hash from the files on disk.</div></div>
+  <div class="actions"><a class="btn primary" href="/verify">Verify again</a></div>
+</div>
 
 {{if .Chain.Empty}}
-<p class="empty">Nothing has been saved under <code>{{.Dir}}</code> yet, so there is nothing to verify.</p>
+<div class="alert info"><div><div class="t">Nothing saved yet</div>
+  There is no evidence under {{.Dir}} to verify. Start a scan and it will appear here.</div></div>
 {{else if .Chain.OK}}
-<p class="good"><strong>Verified.</strong> {{.Chain.Records}} record(s) across
-{{len .Chain.Ledgers}} ledger(s) hash to what was recorded, each linked to the one before it.</p>
+<div class="alert ok"><div>
+  <div class="t">All evidence verified &middot; {{.Chain.Records}} record(s) in {{len .Chain.Ledgers}} ledger(s)</div>
+  Checked {{.CheckedAt.Format "02 Jan at 15:04:05"}}. No record was edited, removed or
+  reordered.</div></div>
 {{else}}
-<p class="alert"><strong>Chain broken</strong> &mdash; {{.Chain.Problems}} of
-{{len .Chain.Ledgers}} ledger(s) do not verify.</p>
+<div class="alert drift"><div>
+  <div class="t">{{.Chain.Problems}} of {{len .Chain.Ledgers}} ledger(s) do not verify</div>
+  Checked {{.CheckedAt.Format "02 Jan at 15:04:05"}}. The ledgers below name the first record that
+  fails and why.</div></div>
 {{end}}
 
-{{if .Chain.Ledgers}}
-<table>
-<caption>One ledger per folder: the scans of each computer, and the captures beside them.</caption>
-<thead><tr>
-  <th scope="col">Folder</th><th scope="col">Holds</th><th scope="col">Records</th><th scope="col">State</th>
-</tr></thead>
-<tbody>
-{{range .Chain.Ledgers}}<tr>
-  <td class="id">{{.Dir}}</td>
-  <td>{{.Kind}}s</td>
-  <td>{{.Records}}</td>
-  <td>{{if .Err}}<span class="badge drift">BROKEN</span><span class="where">{{.Err}}</span>
-      {{else}}<span class="badge compliant">VERIFIED</span>{{end}}</td>
-</tr>
-{{end}}</tbody>
-</table>
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h">Ledgers <span class="muted">one per folder</span>
+      <span class="end">{{.Chain.Records}} record(s)</span></div>
+    {{if .Chain.Ledgers}}
+    <table>
+      <thead><tr><th>Folder</th><th>Holds</th><th class="num">Records</th><th>State</th></tr></thead>
+      <tbody>
+      {{range .Chain.Ledgers}}<tr>
+        <td class="mono">{{.Dir}}</td>
+        <td>{{.Kind}}s</td>
+        <td class="num">{{.Records}}</td>
+        <td>{{if .Err}}<span class="badge b-drift">BROKEN</span><span class="where">{{.Err}}</span>
+          {{else}}<span class="badge b-ok">VERIFIED</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}<div class="body note">No ledger has been written under {{.Dir}} yet.</div>{{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-h">What this proves</div>
+    <div class="body">
+      <p><strong>Proves:</strong> no saved scan or capture was edited, deleted from the middle, or
+        reordered since it was written.</p>
+      <p><strong>Does not prove:</strong> that the newest record and its ledger line were not removed
+        together. That leaves a shorter chain which still verifies, because nothing inside the folder
+        records how long the chain was supposed to be. Copying the latest hash somewhere this
+        computer does not control closes that gap, and is planned.</p>
+      <p class="note">If a ledger breaks, this page names the first record that fails and why.</p>
+    </div>
+  </div>
+</div>
 {{end}}
 
-<section>
-<h2>What this does and does not prove</h2>
-<p>A verified chain shows that no saved file has been edited, deleted, or reordered since it was
-written. It cannot show that a chain was never shortened: deleting the newest record together with
-its last line in <code>chain.log</code> leaves a shorter chain that still verifies, because nothing
-inside the folder records how long the chain was supposed to be. Closing that gap needs the latest
-hash kept somewhere this computer does not control.</p>
-<p><a href="/verify">Run the check again</a></p>
-</section>
-{{end}}
+{{define "footer"}}<footer class="site">Evidence folder: {{.Dir}}</footer>{{end}}

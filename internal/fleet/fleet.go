@@ -21,6 +21,10 @@ import (
 	"github.com/ttran0012/winbaseline/internal/baseline"
 )
 
+// DateFormat is the date layout the host list uses, the same one the baseline
+// uses for an exception's expiry.
+const DateFormat = baseline.ExpiryFormat
+
 // Hosts is a host list file.
 type Hosts struct {
 	Authorization Authorization `yaml:"authorization"`
@@ -39,9 +43,11 @@ type Authorization struct {
 
 // Host is one computer to read.
 type Host struct {
-	Name  string `yaml:"name"`  // the computer name, as Windows knows it
-	Label string `yaml:"label"` // what it is, for the report
-	Skip  bool   `yaml:"skip"`  // listed and approved, but left out of this run
+	Name    string `yaml:"name"`               // the computer name, as Windows knows it
+	Label   string `yaml:"label,omitempty"`    // what it is, for the report
+	Skip    bool   `yaml:"skip,omitempty"`     // listed and approved, but left out of this run
+	Added   string `yaml:"added,omitempty"`    // the date it was put on the list
+	AddedBy string `yaml:"added_by,omitempty"` // who put it there
 }
 
 // hostName is what a computer name may look like: a NetBIOS name or a DNS name.
@@ -86,9 +92,10 @@ func (h *Hosts) Validate() error {
 		return fmt.Errorf("authorization: expires must be a date like 2026-12-31 (got %q)", a.Expires)
 	}
 
-	if len(h.Hosts) == 0 {
-		return fmt.Errorf("host list has no hosts")
-	}
+	// A list with no computers on it is allowed: it says the approval exists
+	// and nothing has been added yet, which is where every list starts and
+	// where one ends up when the last computer is removed. Targets is what
+	// refuses to scan nothing.
 	seen := map[string]bool{}
 	for i, host := range h.Hosts {
 		if host.Name == "" {
@@ -145,7 +152,10 @@ func (h *Hosts) Targets(only string) ([]Host, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("every host in the list is marked skip")
+		if len(h.Hosts) == 0 {
+			return nil, fmt.Errorf("the host list names no computers yet")
+		}
+		return nil, fmt.Errorf("every computer in the list is marked skip")
 	}
 	return out, nil
 }

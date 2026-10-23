@@ -1,0 +1,123 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Fleet</a> / {{.Computer.Host}}</div>{{end}}
+
+{{define "content"}}
+<div class="head">
+  <div><h1>{{.Computer.Host}}
+      <span class="badge {{badgeState .Computer.State}}">{{.Computer.State}}</span>
+      {{if .Changed}}<span class="badge b-chg">{{len .Changed}} CHANGED</span>{{end}}</h1>
+    <div class="sub">{{if .Computer.Label}}{{.Computer.Label}} &middot; {{end}}
+      {{if .Computer.Local}}scanned where it stands{{else}}read over the network{{end}}
+      {{if .Newest}} &middot; last scan {{.Computer.Since}} ({{.Newest.Scan.StartedAt.Format "02 Jan, 15:04"}}){{end}}
+      {{with .Newest}}{{with .Scan.Capture}} &middot; approved capture {{.CapturedAt.Format "02 Jan"}}{{end}}{{end}}</div></div>
+  <div class="actions">
+    <a class="btn" href="/compare?host={{.Host}}">Compare scans</a>
+    <a class="btn primary" href="/scan">Scan now</a>
+  </div>
+</div>
+
+{{if .Changed}}<div class="alert drift"><div>
+  <div class="t">{{len .Changed}} setting(s) changed since this computer was approved{{with .Newest}}{{with .Scan.Capture}} on {{.CapturedAt.Format "02 Jan"}}{{end}}{{end}}</div>
+  Each one is listed below with what it was at sign-off and what it is now.</div></div>{{end}}
+
+{{with .Newest}}
+{{if .Scan.CaptureStatus}}<div class="alert warn"><div><div class="t">Capture not used</div>
+  {{.Scan.CaptureStatus}}. This scan reports no changes.</div></div>{{end}}
+{{if not .Verified}}<div class="alert drift"><div><div class="t">Unverified evidence file</div>
+  {{.Entry.File}} no longer matches the hash the ledger recorded for it.</div></div>{{end}}
+{{end}}
+
+<nav class="tabs" aria-label="This computer">
+  <span class="here" aria-current="page">Summary</span>
+  {{if .Newest}}<a href="/scan?host={{.Host}}&amp;file={{.Newest.Entry.File}}">Latest results <span class="n">{{.Newest.Scan.Summary.Total}}</span></a>
+  {{else}}<span>Latest results</span>{{end}}
+  <a href="/compare?host={{.Host}}">History &amp; compare <span class="n">{{len .Scans}} scans</span></a>
+</nav>
+
+{{if not .Newest}}
+<div class="card"><div class="body"><p>Nothing has been scanned on this computer yet.
+  <a href="/scan">Start a scan</a>.</p></div></div>
+{{else}}
+
+<div class="grid g4 mb">
+  <div class="card kpi {{if .Newest.Scan.Summary.Drift}}drift{{else}}ok{{end}}">
+    <div class="k">Drift</div><div class="v">{{.Newest.Scan.Summary.Drift}}</div>
+    <div class="s">{{if .DriftMove}}{{.DriftMove}}{{else}}first scan of this computer{{end}}</div></div>
+  <div class="card kpi {{if .Changed}}chg{{else}}ok{{end}}">
+    <div class="k">Changed since capture</div>
+    <div class="v">{{if .Newest.Scan.Capture}}{{len .Changed}}{{else}}&mdash;{{end}}</div>
+    <div class="s">{{if .Newest.Scan.Capture}}{{if .Changed}}since sign-off{{else}}still as approved{{end}}
+      {{else}}no approved capture yet{{end}}</div></div>
+  <div class="card kpi ok">
+    <div class="k">Compliant</div><div class="v">{{.Newest.Scan.Summary.Compliant}}</div>
+    <div class="s">of {{.Newest.Scan.Summary.Total}} checks</div></div>
+  <div class="card kpi {{if .Newest.Scan.Summary.Errors}}err{{end}}">
+    <div class="k">Exceptions &middot; Unreadable</div>
+    <div class="v">{{.Newest.Scan.Summary.Exceptions}} &middot; {{.Newest.Scan.Summary.Errors}}</div>
+    <div class="s">{{if .SoonestExc}}{{.SoonestExc}}{{else if .Newest.Scan.Summary.Errors}}part of this computer is unknown{{else}}nothing outstanding{{end}}</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    {{if .Newest.Scan.Capture}}
+    <div class="card-h">Changed since the approved capture <span class="muted">what moved after sign-off</span>
+      <a class="end" href="/scan?host={{.Host}}&amp;file={{.Newest.Entry.File}}">All results</a></div>
+    {{if .Changed}}
+    <table>
+      <thead><tr><th>Check</th><th>Severity</th><th>Setting</th><th>Was</th><th>Now</th></tr></thead>
+      <tbody>
+      {{range .Changed}}<tr>
+        <td class="mono">{{.ID}}</td>
+        <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+        <td>{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}</td>
+        <td><span class="val">{{.Was}}</span></td>
+        <td><span class="val bad">{{.Now}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}<div class="body"><div class="alert ok"><div><div class="t">Nothing has changed</div>
+      Every setting still matches the configuration this computer was approved with.</div></div></div>{{end}}
+
+    {{else}}
+    <div class="card-h">New since the previous scan <span class="muted">no approved capture on this computer</span>
+      <a class="end" href="/scan?host={{.Host}}&amp;file={{.Newest.Entry.File}}">All results</a></div>
+    {{if .NewDrift}}
+    <table>
+      <thead><tr><th>Check</th><th>Severity</th><th>Setting</th><th>Expected</th><th>Actual</th></tr></thead>
+      <tbody>
+      {{range .NewDrift}}<tr>
+        <td class="mono">{{.ID}}</td>
+        <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+        <td>{{.Title}}{{if .Location}}<span class="where">{{.Location}}</span>{{end}}</td>
+        <td><span class="val">{{.Expected}}</span></td>
+        <td><span class="val bad">{{.Actual}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else if .Previous}}<div class="body"><p class="note">No check started drifting between the last
+      two scans. Record an approved capture with <code>driftscan -capture</code> to track changes
+      against a signed-off configuration instead.</p></div>
+    {{else}}<div class="body"><p class="note">Only one scan has been saved, so there is nothing to
+      compare it with yet.</p></div>{{end}}
+    {{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-h">Drift over time <span class="muted">last {{len .Scans}} scan(s)</span></div>
+    <div class="body">
+      {{if .Trend}}{{.Trend}}{{else}}<p class="note">No readable scans to chart.</p>{{end}}
+      <dl class="facts mt">
+        <dt>Evidence</dt><dd>{{if .Chain.OK}}<span class="badge b-ok">VERIFIED</span>{{else}}<span class="badge b-drift">CHECK</span>{{end}}
+          {{len .Scans}} scan(s){{if .Captures}}, {{.Captures}} capture(s){{end}}</dd>
+        <dt>Scanned as</dt><dd>{{.ScannedAs}}{{if .Newest.Scan.Elevated}}, administrator{{else}}, not elevated{{end}}</dd>
+        <dt>Baseline</dt><dd>{{.Newest.Scan.BaselineName}} v{{.Newest.Scan.BaselineVersion}}</dd>
+        {{if .Newest.Scan.ScannedFrom}}<dt>Read from</dt><dd>{{.Newest.Scan.ScannedFrom}}</dd>{{end}}
+        <dt>Evidence file</dt><dd><span class="mono">{{.Newest.Entry.File}}</span></dd>
+        <dt>SHA-256</dt><dd><span class="mono hash">{{.Newest.Entry.Hash}}</span></dd>
+      </dl>
+    </div>
+  </div>
+</div>
+{{end}}
+{{end}}

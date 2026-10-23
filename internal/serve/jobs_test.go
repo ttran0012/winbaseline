@@ -32,7 +32,13 @@ func hostList(t *testing.T, dir, host, expires string) string {
 // post sends a form to the scan endpoint the way a browser would.
 func post(t *testing.T, s *Server, form url.Values, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodPost, startScanPath, strings.NewReader(form.Encode()))
+	return postPath(t, s, startScanPath, form, headers)
+}
+
+// postPath sends a form to one of the write paths the way a browser would.
+func postPath(t *testing.T, s *Server, path string, form url.Values, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", "http://"+r.Host)
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
@@ -175,9 +181,9 @@ func TestStartScanWithoutAHostListOffersOnlyThisComputer(t *testing.T) {
 	s, _ := testServer(t)
 	s.hostsPath = ""
 
-	body := get(t, s, "/").Body.String()
+	body := get(t, s, "/scan").Body.String()
 	if !strings.Contains(body, "Only this computer can be scanned") {
-		t.Error("the overview should say that only this computer can be scanned")
+		t.Error("the scan page should say that only this computer can be scanned")
 	}
 	rec := post(t, s, url.Values{"target": {"SQL-02"}, "csrf": {s.csrf}}, nil)
 	if rec.Code != http.StatusForbidden {
@@ -259,20 +265,20 @@ func TestARunawayScanDoesNotWedgeTheRunner(t *testing.T) {
 	}
 }
 
-func TestJobPageBeforeAnyScan(t *testing.T) {
+func TestScanPageBeforeAnyScan(t *testing.T) {
 	s, _ := testServer(t)
-	rec := get(t, s, "/job")
+	rec := get(t, s, "/scan")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /job = %d, want 200", rec.Code)
+		t.Fatalf("GET /scan = %d, want 200", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "No scan has been started") {
-		t.Error("the job page should say that nothing has run yet")
+		t.Error("the scan page should say that nothing has run yet")
 	}
 }
 
 // The job page reports progress without any script, which means it refreshes
 // itself while a scan is running and stops once it is done.
-func TestJobPageRefreshesOnlyWhileRunning(t *testing.T) {
+func TestScanPageRefreshesOnlyWhileRunning(t *testing.T) {
 	s, _ := testServer(t)
 	release := make(chan struct{})
 	if _, err := s.runner.start([]string{"SQL-02"}, testNow, func(rec *recorder) {
@@ -283,18 +289,19 @@ func TestJobPageRefreshesOnlyWhileRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := get(t, s, "/job").Body.String()
+	body := get(t, s, "/scan").Body.String()
 	if !strings.Contains(body, `http-equiv="refresh"`) {
-		t.Error("the job page should refresh itself while a scan is running")
+		t.Error("the scan page should refresh itself while a scan is running")
 	}
-	for _, want := range []string{"Running", "SQL-02", "0 of 1"} {
+	for _, want := range []string{"Scan in progress", "SQL-02", "0 of 1"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("the running job page is missing %q", want)
+			t.Errorf("the running scan page is missing %q", want)
 		}
 	}
-	// The overview says so too, instead of offering to start another.
-	if overview := get(t, s, "/").Body.String(); !strings.Contains(overview, "A scan is running now") {
-		t.Error("the overview should say a scan is running")
+	// The button is there but cannot be pressed, so a second scan is not
+	// offered while one is running.
+	if !strings.Contains(body, "<button class=\"btn primary\" type=\"submit\" disabled>") {
+		t.Error("the start button should be disabled while a scan is running")
 	}
 
 	close(release)
@@ -303,12 +310,12 @@ func TestJobPageRefreshesOnlyWhileRunning(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	done := get(t, s, "/job").Body.String()
+	done := get(t, s, "/scan").Body.String()
 	if strings.Contains(done, `http-equiv="refresh"`) {
-		t.Error("the job page should stop refreshing once the scan has finished")
+		t.Error("the scan page should stop refreshing once the scan has finished")
 	}
-	if !strings.Contains(done, "Finished") {
-		t.Error("the finished job page should say so")
+	if !strings.Contains(done, "Last scan") || !strings.Contains(done, "Finished") {
+		t.Error("the finished scan page should say so")
 	}
 }
 
@@ -326,8 +333,8 @@ func TestStartScanOfThisComputerSavesVerifiableEvidence(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("POST = %d, want 303: %s", rec.Code, rec.Body.String())
 	}
-	if location := rec.Header().Get("Location"); location != "/job" {
-		t.Errorf("redirected to %q, want /job", location)
+	if location := rec.Header().Get("Location"); location != "/scan" {
+		t.Errorf("redirected to %q, want /scan", location)
 	}
 
 	waitForScan(t, s)
@@ -351,10 +358,13 @@ func TestStartScanOfThisComputerSavesVerifiableEvidence(t *testing.T) {
 	if chain := s.verifyChains(); !chain.OK() || chain.Records != 1 {
 		t.Fatalf("verify = %+v; want the one scan to verify", chain)
 	}
-	if body := get(t, s, "/job").Body.String(); !strings.Contains(body, res.File) {
-		t.Error("the job page should name the evidence file it saved")
+	// The progress list reports each computer's outcome; the evidence file it
+	// wrote is named on that computer's own page.
+	if body := get(t, s, "/scan").Body.String(); !strings.Contains(body, "CLEAN") &&
+		!strings.Contains(body, "DRIFT") && !strings.Contains(body, "PARTIAL") {
+		t.Error("the scan page should report what the computer reported")
 	}
-	if body := get(t, s, "/scans").Body.String(); !strings.Contains(body, res.File) {
-		t.Error("the new scan should appear in the scans list")
+	if body := get(t, s, "/computer").Body.String(); !strings.Contains(body, res.File) {
+		t.Error("the new scan should appear on the computer page")
 	}
 }

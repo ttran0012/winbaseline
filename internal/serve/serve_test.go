@@ -147,20 +147,29 @@ func TestPagesRender(t *testing.T) {
 		target string
 		want   []string
 	}{
-		{"overview lists the computers", "/", []string{
-			"Computers", "LAB-WIN11", "THIS COMPUTER", "Start a scan",
-			"Evidence chain", "Verified",
+		{"fleet lists the computers", "/", []string{
+			"Fleet", "Computers", "LAB-WIN11", "Need attention", "Needs attention",
+			"/computer?host=", "Drift findings", "<svg",
 		}},
-		{"scans list, with this computer's trend and changes", "/scans", []string{
-			"Scans", "saved scan(s)", newest, "Results",
-			"Changed since the approved capture", "Drift trend", "<svg",
+		{"the scan page offers the form", "/scan", []string{
+			"Start a scan", "Computers", "Manage computers", `name="csrf"`, "Runs as",
 		}},
-		{"scan detail", "/scan?file=" + newest, []string{
-			"Scan results", "SVC-001", "DRIFT", "CHANGED", "Check type", newest,
+		{"one computer, with its trend and changes", "/computer", []string{
+			"Summary", "Latest results", "History &amp; compare", newest,
+			"Changed since the approved capture", "Drift over time", "<svg", "Was", "Now",
 		}},
-		{"compare", "/compare", []string{"Compare two scans", "New drift", "Fixed", "Still drifting", "Changed values"}},
-		{"baseline", "/baseline", []string{"Test Baseline", "Approved exceptions", "Checks", "REG-001", "vendor app needs the service"}},
-		{"verify", "/verify", []string{"Verify evidence", "ledger(s)", "Verified", "scans"}},
+		{"one scan's results, grouped", "/scan?file=" + newest, []string{
+			"Scan results", "SVC-001", "DRIFT", "CHANGED", "Status", "Severity",
+			"details class=\"group\"", newest,
+		}},
+		{"compare", "/compare", []string{
+			"Compare scans", "New drift", "Fixed", "Still drifting", "Value changed",
+		}},
+		{"baseline", "/baseline", []string{
+			"Test Baseline", "Approved exceptions", "Checks by type", "All checks",
+			"REG-001", "vendor app needs the service",
+		}},
+		{"evidence", "/verify", []string{"Evidence", "Ledgers", "What this proves", "VERIFIED"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -209,7 +218,7 @@ func TestStylesheetIsServedAsAFile(t *testing.T) {
 // machine with no network at all.
 func TestPagesLoadNothingFromTheNetwork(t *testing.T) {
 	s, saved := testServer(t)
-	for _, target := range []string{"/", "/scans", "/scan?file=" + saved[0].File, "/compare", "/baseline", "/verify"} {
+	for _, target := range []string{"/", "/computer", "/scan", "/scan?file=" + saved[0].File, "/compare", "/baseline", "/verify"} {
 		body := get(t, s, target).Body.String()
 		// No scripts, no inline styles, no frames, and nothing fetched from a
 		// URL. The SVG namespace is a name, not an address, so it is left out
@@ -255,7 +264,7 @@ func TestSecurityHeaders(t *testing.T) {
 		"X-Frame-Options":         "DENY",
 		"Referrer-Policy":         "no-referrer",
 	}
-	for _, target := range []string{"/", "/scans", "/style.css", "/nope"} {
+	for _, target := range []string{"/", "/computer", "/scan", "/style.css", "/nope"} {
 		rec := get(t, s, target)
 		for header, value := range want {
 			if got := rec.Header().Get(header); got != value {
@@ -336,7 +345,6 @@ func TestScanFileMustBeInTheLedger(t *testing.T) {
 		filepath.Join(dir, saved[0].File), // the right file by full path
 		unlisted,
 		"chain.log",
-		"",
 		".",
 		"..",
 		strings.TrimSuffix(saved[0].File, ".json") + ".html",
@@ -360,7 +368,7 @@ func TestScanFileMustBeInTheLedger(t *testing.T) {
 
 func TestUnknownPathIsNotFound(t *testing.T) {
 	s, _ := testServer(t)
-	for _, target := range []string{"/nope", "/scan/extra", "/style.css/extra"} {
+	for _, target := range []string{"/nope", "/scan/extra", "/style.css/extra", "/computer/extra"} {
 		if rec := get(t, s, target); rec.Code != http.StatusNotFound {
 			t.Errorf("GET %s = %d, want 404", target, rec.Code)
 		}
@@ -400,7 +408,14 @@ func TestScanFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := get(t, s, "/scan?file="+newest+tt.query).Body.String()
-			rows := body[strings.Index(body, "<tbody>"):]
+			// The groups are the result of the filter; the chips above them
+			// always name every status, whatever is being shown.
+			rows := body
+			if i := strings.Index(body, "<details"); i > 0 {
+				rows = body[i:]
+			} else if i := strings.Index(body, "No result matches"); i > 0 {
+				rows = body[i:]
+			}
 			for _, want := range tt.wantShown {
 				if !strings.Contains(rows, want) {
 					t.Errorf("filtered table does not show %s", want)
@@ -411,6 +426,9 @@ func TestScanFilters(t *testing.T) {
 					t.Errorf("filtered table still shows %s", hidden)
 				}
 			}
+			if len(tt.wantShown) == 0 && !strings.Contains(rows, "No result matches this filter") {
+				t.Error("a filter that matches nothing should say so")
+			}
 		})
 	}
 }
@@ -420,7 +438,7 @@ func TestScanFilters(t *testing.T) {
 func TestBaselinePageMarksExpiringExceptions(t *testing.T) {
 	s, _ := testServer(t)
 	body := get(t, s, "/baseline").Body.String()
-	for _, want := range []string{"EXPIRED", "EXPIRES IN 12 DAYS"} {
+	for _, want := range []string{"EXPIRED", "12 DAYS LEFT"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("baseline page is missing %q", want)
 		}
@@ -436,7 +454,7 @@ func TestOverviewWithoutAnyScans(t *testing.T) {
 	body := rec.Body.String()
 	// This computer is always listed, so an empty folder says what is missing
 	// rather than showing nothing at all.
-	for _, want := range []string{"NEVER SCANNED", "No evidence has been saved for this computer yet"} {
+	for _, want := range []string{"NEVER SCANNED", "Nothing has been scanned on this computer yet"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("an empty results folder should say %q", want)
 		}
@@ -458,7 +476,7 @@ func TestOverviewFallsBackToNewSinceLastScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	body := get(t, New(Options{Dir: dir, Now: func() time.Time { return testNow }}), "/scans").Body.String()
+	body := get(t, New(Options{Dir: dir, Now: func() time.Time { return testNow }}), "/computer").Body.String()
 	if !strings.Contains(body, "New since the previous scan") {
 		t.Error("a scan with no capture should fall back to comparing with the previous scan")
 	}
@@ -490,10 +508,11 @@ func TestEditedScanIsLabeledUnverified(t *testing.T) {
 	if body := get(t, s, "/").Body.String(); !strings.Contains(body, "UNVERIFIED") {
 		t.Error("the overview should flag a computer whose latest scan does not match the ledger")
 	}
-	if body := get(t, s, "/scans").Body.String(); !strings.Contains(body, "UNVERIFIED") {
-		t.Error("the scans list should flag it too")
+	if body := get(t, s, "/computer").Body.String(); !strings.Contains(body, "UNVERIFIED") {
+		t.Error("the computer page should flag it too")
 	}
-	if body := get(t, s, "/verify").Body.String(); !strings.Contains(body, "Chain broken") {
-		t.Error("the verify page should report the broken chain")
+	if body := get(t, s, "/verify").Body.String(); !strings.Contains(body, "do not verify") ||
+		!strings.Contains(body, "BROKEN") {
+		t.Error("the evidence page should report the broken ledger")
 	}
 }

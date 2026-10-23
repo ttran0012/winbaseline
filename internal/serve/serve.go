@@ -33,8 +33,19 @@ import (
 	"github.com/ttran0012/winbaseline/internal/fleet"
 )
 
-// startScanPath is the one path that accepts a POST.
+// startScanPath starts a scan.
 const startScanPath = "/scan/start"
+
+// writePaths are the only paths that accept a POST: starting a scan, and the
+// four buttons that change the approved host list. Every one of them goes
+// through checkTrustedForm first.
+var writePaths = map[string]bool{
+	startScanPath:  true,
+	addHostPath:    true,
+	skipHostPath:   true,
+	removeHostPath: true,
+	testHostPath:   true,
+}
 
 // Server answers the dashboard pages for one results folder.
 type Server struct {
@@ -43,8 +54,10 @@ type Server struct {
 	hostsPath    string
 	writeHTML    bool
 	now          func() time.Time
-	csrf         string // a token for this process, embedded in the scan form
+	csrf         string // a token for this process, embedded in every form
+	addr         string // what the person typed, for the page to show
 	runner       runner
+	probes       probes
 	mux          *http.ServeMux
 }
 
@@ -55,6 +68,7 @@ type Options struct {
 	BaselinePath string
 	HostsPath    string // the approved host list; without it, only this computer can be scanned
 	WriteHTML    bool
+	Addr         string // the address being served, shown on every page
 	Now          func() time.Time
 }
 
@@ -66,6 +80,7 @@ func New(o Options) *Server {
 		baselinePath: o.BaselinePath,
 		hostsPath:    o.HostsPath,
 		writeHTML:    o.WriteHTML,
+		addr:         o.Addr,
 		now:          o.Now,
 		csrf:         newToken(),
 		mux:          http.NewServeMux(),
@@ -75,14 +90,22 @@ func New(o Options) *Server {
 	}
 
 	s.mux.HandleFunc("/", s.overview)
-	s.mux.HandleFunc("/scans", s.scans)
-	s.mux.HandleFunc("/scan", s.scanDetail)
+	s.mux.HandleFunc("/computer", s.computerPage)
+	s.mux.HandleFunc("/scan", s.scanPage)
 	s.mux.HandleFunc(startScanPath, s.startScan)
-	s.mux.HandleFunc("/job", s.jobPage)
+	s.mux.HandleFunc(addHostPath, s.changeHosts)
+	s.mux.HandleFunc(skipHostPath, s.changeHosts)
+	s.mux.HandleFunc(removeHostPath, s.changeHosts)
+	s.mux.HandleFunc(testHostPath, s.changeHosts)
 	s.mux.HandleFunc("/compare", s.compare)
 	s.mux.HandleFunc("/baseline", s.baselinePage)
 	s.mux.HandleFunc("/verify", s.verifyPage)
 	s.mux.HandleFunc("/style.css", s.stylesheet)
+
+	// The pages these used to be have moved, and a bookmark should still land
+	// somewhere useful rather than on a 404.
+	s.mux.HandleFunc("/scans", s.movedToComputer)
+	s.mux.HandleFunc("/job", s.movedToScan)
 	return s
 }
 
@@ -94,11 +117,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	setSecurityHeaders(w.Header())
 	switch {
 	case r.Method == http.MethodGet:
-	case r.Method == http.MethodPost && r.URL.Path == startScanPath:
+	case r.Method == http.MethodPost && writePaths[r.URL.Path]:
 	default:
 		w.Header().Set("Allow", "GET")
-		http.Error(w, "the dashboard answers GET, and a POST only to "+startScanPath,
-			http.StatusMethodNotAllowed)
+		http.Error(w, "the dashboard answers GET, and a POST only to the few paths that start a scan "+
+			"or change the host list", http.StatusMethodNotAllowed)
 		return
 	}
 	s.mux.ServeHTTP(w, r)

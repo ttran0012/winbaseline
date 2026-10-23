@@ -1,0 +1,82 @@
+{{define "content"}}
+<div class="head">
+  <div><h1>Fleet</h1>
+    <div class="sub">{{len .Computers}} computer(s) with evidence{{if .Approved}} &middot;
+      {{.Approved}} on the approved host list{{end}}{{if .LastScan}} &middot; last scan {{.LastScan}}{{end}}</div></div>
+  <div class="actions">
+    <a class="btn" href="/scan#manage">Add computer</a>
+    <a class="btn" href="/verify">Verify evidence</a>
+    {{if .Running}}<a class="btn primary" href="/scan">Scan running&hellip;</a>
+    {{else}}<a class="btn primary" href="/scan">Start a scan</a>{{end}}
+  </div>
+</div>
+
+<div class="grid g4 mb">
+  <div class="card kpi {{if .NeedAttention}}drift{{else}}ok{{end}}">
+    <div class="k">Need attention</div><div class="v">{{.NeedAttention}}</div>
+    <div class="s">of {{len .Computers}} computer(s)</div></div>
+  <div class="card kpi {{if .Changed}}chg{{else}}ok{{end}}">
+    <div class="k">Changed since capture</div><div class="v">{{.Changed}}</div>
+    <div class="s">{{if .ChangedWhere}}{{.ChangedWhere}}{{else}}nothing has moved since sign-off{{end}}</div></div>
+  <div class="card kpi {{if .Drift}}drift{{else}}ok{{end}}">
+    <div class="k">Drift findings</div><div class="v">{{.Drift}}</div>
+    <div class="s">{{.DriftHigh}} high severity</div></div>
+  <div class="card kpi {{if .Chain.OK}}ok{{else}}err{{end}}">
+    <div class="k">Evidence</div>
+    <div class="v">{{if .Chain.Empty}}&mdash;{{else if .Chain.OK}}OK{{else}}BROKEN{{end}}</div>
+    <div class="s">{{.Chain.Records}} record(s) in {{len .Chain.Ledgers}} ledger(s)</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h">Computers <span class="muted">most urgent first</span></div>
+    <table>
+      <thead><tr>
+        <th>Computer</th><th>State</th><th>Last scan</th><th class="num">Drift</th>
+        <th class="num">Changed</th><th class="num">Errors</th><th>Trend</th><th></th>
+      </tr></thead>
+      <tbody>
+      {{range .Computers}}<tr>
+        <td>{{if .Latest}}<a class="strong" href="/computer?host={{.Key}}">{{.Host}}</a>
+            {{else}}<span class="strong muted-name">{{.Host}}</span>{{end}}
+          <span class="where">{{if .Label}}{{.Label}}{{else if .Local}}this computer{{else}}no label{{end}}{{if not .Local}} &middot; remote scan{{end}}</span></td>
+        <td><span class="badge {{badgeState .State}}">{{.State}}</span>
+            {{if and .Latest .Latest.Scan.Summary.Changed}}{{if ne .State "CHANGED"}}<span class="badge b-chg">{{.Latest.Scan.Summary.Changed}} CHANGED</span>{{end}}{{end}}</td>
+        {{if .Latest}}
+        <td>{{.Since}}</td>
+        <td class="num {{if .Latest.Scan.Summary.Drift}}strong{{else}}zero{{end}}">{{.Latest.Scan.Summary.Drift}}</td>
+        <td class="num {{if .Latest.Scan.Summary.Changed}}strong{{else}}zero{{end}}">{{if .Latest.Scan.Capture}}{{.Latest.Scan.Summary.Changed}}{{else}}&mdash;{{end}}</td>
+        <td class="num {{if .Latest.Scan.Summary.Errors}}strong{{else}}zero{{end}}">{{.Latest.Scan.Summary.Errors}}</td>
+        <td>{{.Spark}}</td>
+        <td><a href="/computer?host={{.Key}}">Open</a></td>
+        {{else}}
+        <td colspan="5" class="note">{{if .Local}}Nothing has been scanned on this computer yet.
+            {{else}}Approved in the host list, but never scanned.{{end}}</td>
+        <td><a href="/scan">Scan</a></td>
+        {{end}}
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-h">Needs attention <span class="muted">most urgent first</span>
+      <span class="end">{{len .Attention}}</span></div>
+    {{if .Attention}}
+    <ul class="list">
+      {{range .Attention}}<li>
+        <span class="badge {{.Badge}}">{{.Label}}</span>
+        <div class="main">{{if .Host}}<strong>{{.Host}}</strong>: {{end}}{{.What}}
+          {{if .Meta}}<div class="meta">{{.Meta}}</div>{{end}}</div>
+        {{if .Link}}<a href="{{.Link}}">Open</a>{{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <div class="body"><div class="alert ok"><div><div class="t">Nothing needs attention</div>
+      Every computer with evidence is compliant, fully readable, and its evidence verifies.</div></div></div>
+    {{end}}
+  </div>
+</div>
+{{end}}
