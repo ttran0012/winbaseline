@@ -1,0 +1,855 @@
+# Windows Configuration Baseline - Windows Server 2025 Member Server Baseline
+# For member servers. Settings shared with the other baselines keep the same check ID.
+# Source: CIS Microsoft Windows Server 2025 Benchmark (Member Server profile) (https://www.cisecurity.org/cis-benchmarks)
+# Each check names the policy setting it covers. Add the CIS recommendation number
+# from the benchmark PDF in the "cis" field as checks are reviewed. Checks marked
+# "Atlas-Tech policy" are organization rules, not CIS recommendations.
+#
+# Common fields:
+#   id        unique check ID (never reuse a retired ID; REG-014 retired in 0.2.0, replaced by FW-001)
+#   title     setting name as shown in Group Policy / the benchmark
+#   severity  high | medium | low
+#   type      registry | service | account | group | firewall | audit | software
+#   expected  the compliant value (meaning depends on type, see each section)
+
+name: Windows Server 2025 Member Server Baseline
+version: 0.3.0
+benchmark: CIS Microsoft Windows Server 2025 Benchmark (Member Server profile)
+
+checks:
+  # ---------------------------------------------------------------- registry
+  # hive/path/value: where the setting lives
+  # operator: equals | lte | gte    default: value Windows uses when not set
+  - id: REG-001
+    title: "User Account Control: Run all administrators in Admin Approval Mode"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: EnableLUA
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-002
+    title: "User Account Control: Behavior of the elevation prompt for administrators"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: ConsentPromptBehaviorAdmin
+    operator: equals
+    expected: "2"
+
+  - id: REG-003
+    title: "Interactive logon: Do not require CTRL+ALT+DEL (Disabled)"
+    cis: ""
+    severity: low
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: DisableCAD
+    operator: equals
+    expected: "0"
+
+  - id: REG-004
+    title: "Interactive logon: Machine inactivity limit (900 seconds or fewer)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: InactivityTimeoutSecs
+    operator: lte
+    expected: "900"
+
+  - id: REG-005
+    title: "Network access: Do not allow anonymous enumeration of SAM accounts"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: RestrictAnonymousSAM
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-006
+    title: "Network access: Do not allow anonymous enumeration of SAM accounts and shares"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: RestrictAnonymous
+    operator: equals
+    expected: "1"
+
+  - id: REG-007
+    title: "Network security: LAN Manager authentication level (NTLMv2 only, refuse LM and NTLM)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: LmCompatibilityLevel
+    operator: equals
+    expected: "5"
+
+  - id: REG-008
+    title: "Network security: Do not store LAN Manager hash value on next password change"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: NoLMHash
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-009
+    title: "WDigest Authentication (disable storing plaintext credentials)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest
+    value: UseLogonCredential
+    operator: equals
+    expected: "0"
+    default: 0
+
+  - id: REG-010
+    title: "Microsoft network server: Digitally sign communications (always)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    value: RequireSecuritySignature
+    operator: equals
+    expected: "1"
+
+  - id: REG-011
+    title: "Microsoft network client: Digitally sign communications (always)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    value: RequireSecuritySignature
+    operator: equals
+    expected: "1"
+
+  - id: REG-012
+    title: "Configure SMB v1 server (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    value: SMB1
+    operator: equals
+    expected: "0"
+
+  - id: REG-013
+    title: "Turn off Autoplay (All drives)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    value: NoDriveTypeAutoRun
+    operator: equals
+    expected: "255"
+
+  - id: REG-015
+    title: "Accounts: Limit local account use of blank passwords to console logon only"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: LimitBlankPasswordUse
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-016
+    title: "Audit: Force audit policy subcategory settings to override category settings"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: SCENoApplyLegacyAuditPolicy
+    operator: equals
+    expected: "1"
+
+  - id: REG-017
+    title: "Domain member: Digitally encrypt or sign secure channel data (always)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\Netlogon\Parameters
+    value: RequireSignOrSeal
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-018
+    title: "Domain member: Require strong (Windows 2000 or later) session key"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\Netlogon\Parameters
+    value: RequireStrongKey
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-019
+    title: "Microsoft network client: Send unencrypted password to third-party SMB servers (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    value: EnablePlainTextPassword
+    operator: equals
+    expected: "0"
+
+  - id: REG-020
+    title: "Network access: Do not allow storage of passwords and credentials for network authentication"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: DisableDomainCreds
+    operator: equals
+    expected: "1"
+
+  - id: REG-021
+    title: "Network access: Let Everyone permissions apply to anonymous users (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: EveryoneIncludesAnonymous
+    operator: equals
+    expected: "0"
+
+  - id: REG-022
+    title: "Network access: Restrict anonymous access to Named Pipes and Shares"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    value: RestrictNullSessAccess
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-023
+    title: "Network security: Allow LocalSystem NULL session fallback (Disabled)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0
+    value: AllowNullSessionFallback
+    operator: equals
+    expected: "0"
+
+  - id: REG-024
+    title: "Network security: Allow PKU2U authentication requests to use online identities (Disabled)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa\pku2u
+    value: AllowOnlineID
+    operator: equals
+    expected: "0"
+
+  - id: REG-025
+    title: "Network security: Kerberos encryption types limited to AES128, AES256, and future types"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters
+    value: SupportedEncryptionTypes
+    operator: equals
+    expected: "2147483640"
+
+  - id: REG-026
+    title: "Network security: Minimum session security for NTLM SSP clients (NTLMv2 and 128-bit encryption)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0
+    value: NTLMMinClientSec
+    operator: equals
+    expected: "537395200"
+
+  - id: REG-027
+    title: "Network security: Minimum session security for NTLM SSP servers (NTLMv2 and 128-bit encryption)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0
+    value: NTLMMinServerSec
+    operator: equals
+    expected: "537395200"
+
+  - id: REG-028
+    title: "User Account Control: Admin Approval Mode for the built-in Administrator account"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: FilterAdministratorToken
+    operator: equals
+    expected: "1"
+
+  - id: REG-029
+    title: "User Account Control: Behavior of the elevation prompt for standard users (Automatically deny)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: ConsentPromptBehaviorUser
+    operator: equals
+    expected: "0"
+
+  - id: REG-030
+    title: "User Account Control: Only elevate UIAccess applications installed in secure locations"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: EnableSecureUIAPaths
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-031
+    title: "User Account Control: Switch to the secure desktop when prompting for elevation"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    value: PromptOnSecureDesktop
+    operator: equals
+    expected: "1"
+    default: 1
+
+  - id: REG-032
+    title: "Disallow Autoplay for non-volume devices"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\Explorer
+    value: NoAutoplayfornonVolume
+    operator: equals
+    expected: "1"
+
+  - id: REG-033
+    title: "Set the default behavior for AutoRun (Do not execute any autorun commands)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    value: NoAutorun
+    operator: equals
+    expected: "1"
+
+  - id: REG-034
+    title: "Windows Installer: Always install with elevated privileges (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\Installer
+    value: AlwaysInstallElevated
+    operator: equals
+    expected: "0"
+
+  - id: REG-035
+    title: "Windows PowerShell: Turn on PowerShell Script Block Logging"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    value: EnableScriptBlockLogging
+    operator: equals
+    expected: "1"
+
+  - id: REG-036
+    title: "WinRM Client: Allow Basic authentication (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\WinRM\Client
+    value: AllowBasic
+    operator: equals
+    expected: "0"
+
+  - id: REG-037
+    title: "WinRM Service: Allow Basic authentication (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\WinRM\Service
+    value: AllowBasic
+    operator: equals
+    expected: "0"
+
+  - id: REG-038
+    title: "WinRM Service: Allow unencrypted traffic (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\WinRM\Service
+    value: AllowUnencryptedTraffic
+    operator: equals
+    expected: "0"
+
+  - id: REG-039
+    title: "Remote Desktop: Do not allow passwords to be saved"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+    value: DisablePasswordSaving
+    operator: equals
+    expected: "1"
+
+  - id: REG-040
+    title: "Remote Desktop: Require user authentication for remote connections by using Network Level Authentication"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+    value: UserAuthentication
+    operator: equals
+    expected: "1"
+
+  - id: REG-041
+    title: "Remote Assistance: Configure Solicited Remote Assistance (Disabled)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+    value: fAllowToGetHelp
+    operator: equals
+    expected: "0"
+
+  - id: REG-042
+    title: "DNS Client: Turn off multicast name resolution (LLMNR)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows NT\DNSClient
+    value: EnableMulticast
+    operator: equals
+    expected: "0"
+
+  - id: REG-043
+    title: "MSS: IP source routing protection level, IPv4 (Highest protection, source routing completely disabled)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+    value: DisableIPSourceRouting
+    operator: equals
+    expected: "2"
+
+  - id: REG-044
+    title: "Configure LSASS to run as a protected process"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Control\Lsa
+    value: RunAsPPL
+    operator: gte
+    expected: "1"
+
+  - id: REG-045
+    title: "Microsoft Defender Antivirus is not turned off by policy"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows Defender
+    value: DisableAntiSpyware
+    operator: equals
+    expected: "0"
+
+  - id: REG-046
+    title: "Microsoft Defender real-time protection is not turned off by policy"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection
+    value: DisableRealtimeMonitoring
+    operator: equals
+    expected: "0"
+
+  - id: REG-047
+    title: "Configure Windows Defender SmartScreen (Enabled)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\System
+    value: EnableSmartScreen
+    operator: equals
+    expected: "1"
+
+  - id: REG-048
+    title: "Security event log: Maximum log size (196,608 KB or greater)"
+    cis: ""
+    severity: medium
+    type: registry
+    hive: HKLM
+    path: SOFTWARE\Policies\Microsoft\Windows\EventLog\Security
+    value: MaxSize
+    operator: gte
+    expected: "196608"
+
+  - id: REG-049
+    title: "Configure SMB v1 client driver (Disabled)"
+    cis: ""
+    severity: high
+    type: registry
+    hive: HKLM
+    path: SYSTEM\CurrentControlSet\Services\mrxsmb10
+    value: Start
+    operator: equals
+    expected: "4"
+    default: 4
+
+  # ---------------------------------------------------------------- services
+  # service: short service name (not the display name)
+  # expected: disabled | disabled_or_absent (not installed also counts as compliant)
+  - id: SVC-001
+    title: "Routing and Remote Access (RemoteAccess) is disabled"
+    cis: ""
+    severity: medium
+    type: service
+    service: RemoteAccess
+    expected: disabled_or_absent
+
+  - id: SVC-005
+    title: "OpenSSH SSH Server (sshd) is disabled or not installed"
+    cis: ""
+    severity: medium
+    type: service
+    service: sshd
+    expected: disabled_or_absent
+
+  - id: SVC-006
+    title: "Remote Procedure Call (RPC) Locator (RpcLocator) is disabled"
+    cis: ""
+    severity: low
+    type: service
+    service: RpcLocator
+    expected: disabled_or_absent
+
+  - id: SVC-010
+    title: "Infrared monitor service (irmon) is disabled or not installed"
+    cis: ""
+    severity: low
+    type: service
+    service: irmon
+    expected: disabled_or_absent
+
+  - id: SVC-013
+    title: "Simple TCP/IP Services (simptcp) is disabled or not installed"
+    cis: ""
+    severity: low
+    type: service
+    service: simptcp
+    expected: disabled_or_absent
+
+  - id: SVC-014
+    title: "Special Administration Console Helper (sacsvr) is disabled or not installed"
+    cis: ""
+    severity: low
+    type: service
+    service: sacsvr
+    expected: disabled_or_absent
+
+  # ---------------------------------------------------------------- accounts
+  # account: guest | administrator (found by built-in ID, so renamed accounts are still checked)
+  # expected: disabled | renamed
+  - id: ACCT-001
+    title: "Accounts: Guest account status (Disabled)"
+    cis: ""
+    severity: high
+    type: account
+    account: guest
+    expected: disabled
+
+  - id: ACCT-002
+    title: "Accounts: Rename administrator account"
+    cis: ""
+    severity: medium
+    type: account
+    account: administrator
+    expected: renamed
+
+  # group: administrators (found by its well-known SID, works on any Windows language)
+  # approved: every member must match one entry (account name, or COMPUTER\name)
+  # Update this list per environment, including the renamed built-in administrator.
+  - id: GRP-001
+    title: "Only approved accounts are members of the local Administrators group"
+    cis: "Atlas-Tech policy"
+    severity: high
+    type: group
+    group: administrators
+    approved:
+      - Administrator
+      - locadm          # renamed built-in Administrator in the lab (see lab\guest\Set-LocalHardening.ps1)
+      - itadmin
+      - Domain Admins
+
+  # ---------------------------------------------------------------- firewall
+  # profile: domain | private | public; Group Policy values override local values
+  - id: FW-001
+    title: "Windows Firewall: Domain profile firewall state (On)"
+    cis: ""
+    severity: high
+    type: firewall
+    profile: domain
+    expected: "on"
+
+  - id: FW-002
+    title: "Windows Firewall: Private profile firewall state (On)"
+    cis: ""
+    severity: high
+    type: firewall
+    profile: private
+    expected: "on"
+
+  - id: FW-003
+    title: "Windows Firewall: Public profile firewall state (On)"
+    cis: ""
+    severity: high
+    type: firewall
+    profile: public
+    expected: "on"
+
+  # ---------------------------------------------------------------- audit policy (requires administrator)
+  # subcategory: GUID, which is the same on every Windows language
+  # expected: success | failure | success_and_failure (more auditing than required is compliant)
+  - id: AUD-001
+    title: "Audit Credential Validation (Success and Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE923F-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-002
+    title: "Audit Security Group Management (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9237-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-003
+    title: "Audit User Account Management (Success and Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9235-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-004
+    title: "Audit Account Lockout (Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9217-69AE-11D9-BED3-505054503030}"
+    expected: failure
+
+  - id: AUD-005
+    title: "Audit Logon (Success and Failure)"
+    cis: ""
+    severity: high
+    type: audit
+    subcategory: "{0CCE9215-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-006
+    title: "Audit Special Logon (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE921B-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-007
+    title: "Audit Audit Policy Change (Success)"
+    cis: ""
+    severity: high
+    type: audit
+    subcategory: "{0CCE922F-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-008
+    title: "Audit Logoff (Success)"
+    cis: ""
+    severity: low
+    type: audit
+    subcategory: "{0CCE9216-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-009
+    title: "Audit Other Logon/Logoff Events (Success and Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE921C-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-010
+    title: "Audit Group Membership (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9249-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-011
+    title: "Audit Process Creation (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE922B-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-012
+    title: "Audit Authentication Policy Change (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9230-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-013
+    title: "Audit Sensitive Privilege Use (Success and Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9228-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-014
+    title: "Audit Security State Change (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9210-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-015
+    title: "Audit Security System Extension (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9211-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  - id: AUD-016
+    title: "Audit System Integrity (Success and Failure)"
+    cis: ""
+    severity: high
+    type: audit
+    subcategory: "{0CCE9212-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-017
+    title: "Audit Removable Storage (Success and Failure)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9245-69AE-11D9-BED3-505054503030}"
+    expected: success_and_failure
+
+  - id: AUD-020
+    title: "Audit Computer Account Management (Success)"
+    cis: ""
+    severity: medium
+    type: audit
+    subcategory: "{0CCE9236-69AE-11D9-BED3-505054503030}"
+    expected: success
+
+  # ---------------------------------------------------------------- installed software
+  # pattern: regular expression matched against installed program names; expected: absent
+  - id: SW-001
+    title: "No peer-to-peer file sharing software installed"
+    cis: "Atlas-Tech policy"
+    severity: medium
+    type: software
+    pattern: "(?i)torrent|limewire|frostwire"
+    expected: absent
+
+  - id: SW-002
+    title: "No unapproved remote access tools installed"
+    cis: "Atlas-Tech policy"
+    severity: high
+    type: software
+    pattern: "(?i)teamviewer|anydesk|ultraviewer|rustdesk"
+    expected: absent
+
+# ---------------------------------------------------------------- exceptions
+# Deviations the organization has approved. While an exception is in force its
+# check is reported as EXCEPTION instead of DRIFT: the deviation still appears
+# in the scan evidence, but it does not set the drift exit code. An exception
+# never changes a COMPLIANT or ERROR result.
+#   check        ID of the check it covers; must be one of the checks above
+#   hosts        computer names it applies to; omit to cover every host
+#   reason       why the deviation was accepted
+#   approved_by  who accepted it
+#   expires      last day it applies, as YYYY-MM-DD; from the next day the
+#                check is drift again and the note says the exception expired
+#
+# exceptions:
+#   - check: SW-002
+#     hosts: [LAB-WIN11]
+#     reason: "Helpdesk uses TeamViewer for remote support until the Intune rollout finishes"
+#     approved_by: "J. Lee, IT Manager"
+#     expires: "2026-12-31"
