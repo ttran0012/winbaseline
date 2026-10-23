@@ -127,6 +127,7 @@ func serveDashboard(addr, outDir, baselinePath, hostsPath string, writeHTML bool
 		BaselinePath: baselinePath,
 		HostsPath:    hostsPath,
 		WriteHTML:    writeHTML,
+		Addr:         addr,
 	})
 	fmt.Printf("Dashboard: http://%s/\n", addr)
 	fmt.Printf("Evidence folder: %s\n", outDir)

@@ -4,31 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {{block "head" .}}{{end}}
-<title>{{.Title}} - winbaseline</title>
+<title>{{.Title}} - WinBaseline</title>
 <link rel="stylesheet" href="/style.css">
 </head>
-<body class="dash">
+<body>
 
-<header class="topbar">
-  <p class="brand">winbaseline <span class="ro">local dashboard</span></p>
-  <nav aria-label="Pages">
-    <a href="/"{{if eq .Nav "overview"}} class="here" aria-current="page"{{end}}>Overview</a>
-    <a href="/scans?host={{.Host}}"{{if eq .Nav "scans"}} class="here" aria-current="page"{{end}}>Scans</a>
-    <a href="/compare?host={{.Host}}"{{if eq .Nav "compare"}} class="here" aria-current="page"{{end}}>Compare</a>
+<header class="topbar"><div class="in">
+  <div class="logo"><span class="mark">WB</span>WinBaseline</div>
+  <nav aria-label="Main">
+    <a href="/"{{if eq .Nav "fleet"}} class="here" aria-current="page"{{end}}>Fleet</a>
+    <a href="/scan"{{if eq .Nav "scan"}} class="here" aria-current="page"{{end}}>Scan</a>
     <a href="/baseline"{{if eq .Nav "baseline"}} class="here" aria-current="page"{{end}}>Baseline</a>
-    <a href="/verify"{{if eq .Nav "verify"}} class="here" aria-current="page"{{end}}>Verify evidence</a>
+    <a href="/verify"{{if eq .Nav "verify"}} class="here" aria-current="page"{{end}}>Evidence</a>
   </nav>
-</header>
+  <div class="right">
+    {{if .Chain.Empty}}<a class="pill bad" href="/verify"><span class="dot"></span>No evidence yet</a>
+    {{else if .Chain.OK}}<a class="pill" href="/verify"><span class="dot"></span>Evidence verified</a>
+    {{else}}<a class="pill bad" href="/verify"><span class="dot"></span>Evidence broken</a>{{end}}
+    <span>Read-only scans &middot; {{.Addr}}</span>
+  </div>
+</div></header>
 
-<main>
+<div class="page">
+{{block "crumbs" .}}{{end}}
 {{template "content" .}}
-</main>
+</div>
 
-<footer class="site">
-<p>Evidence in <code>{{.Dir}}</code>. This dashboard reads saved evidence, and can start a scan that
-reads settings and writes evidence. It changes no setting on any computer, installs nothing, holds no
-credentials, and is served on the loopback interface only.</p>
-</footer>
+{{block "footer" .}}<footer class="site">Reads saved evidence and can start read-only scans. Changes no
+setting on any computer, installs nothing, stores no credentials, and listens on the loopback
+interface only.</footer>{{end}}
 
 </body>
 </html>

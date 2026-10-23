@@ -109,7 +109,7 @@ func TestCompareScansSortsBySeverity(t *testing.T) {
 	}
 }
 
-// The grouping has to survive the page: a check must appear under its own
+// The grouping has to survive the page: a check has to appear under its own
 // heading and not under another.
 func TestComparePagePutsAChecksRowUnderTheRightHeading(t *testing.T) {
 	s, saved := testServer(t)
@@ -121,26 +121,24 @@ func TestComparePagePutsAChecksRowUnderTheRightHeading(t *testing.T) {
 	}
 	body := rec.Body.String()
 
-	section := func(heading string) string {
-		start := strings.Index(body, heading)
-		if start < 0 {
-			t.Fatalf("the page has no %q heading", heading)
+	at := func(what string) int {
+		i := strings.Index(body, what)
+		if i < 0 {
+			t.Fatalf("the page does not contain %q", what)
 		}
-		rest := body[start:]
-		if end := strings.Index(rest, "</section>"); end > 0 {
-			return rest[:end]
-		}
-		return rest
+		return i
 	}
-	if !strings.Contains(section("New drift"), "SVC-001") {
-		t.Error("SVC-001 should be listed under New drift")
+	// SVC-001 is listed between the New drift heading and the Fixed heading,
+	// which is the only place it belongs.
+	newDrift, fixed, row := at("New drift"), at("Fixed <span"), at("SVC-001")
+	if !(newDrift < row && row < fixed) {
+		t.Errorf("SVC-001 is at %d, want it between New drift (%d) and Fixed (%d)", row, newDrift, fixed)
 	}
-	for _, heading := range []string{"Fixed", "Still drifting", "Changed values"} {
-		if strings.Contains(section(heading), "SVC-001") {
-			t.Errorf("SVC-001 should not be listed under %s", heading)
-		}
+	// And it is only listed once, so it cannot also be under another heading.
+	if n := strings.Count(body, "SVC-001"); n != 1 {
+		t.Errorf("SVC-001 appears %d times, want once", n)
 	}
-	// Both statuses are spelled out, not just colored.
+	// Both statuses are spelled out, not just coloured.
 	if !strings.Contains(body, "COMPLIANT") || !strings.Contains(body, "DRIFT") {
 		t.Error("the comparison should name both statuses as text")
 	}

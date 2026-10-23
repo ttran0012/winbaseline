@@ -38,7 +38,9 @@ func TestValidate(t *testing.T) {
 		{"a complete list is accepted", list(Host{Name: "SQL-02", Label: "database"}), ""},
 		{"an FQDN is a computer name", list(Host{Name: "sql-02.corp.example.com"}), ""},
 
-		{"no hosts", edit(func(h *Hosts) { h.Hosts = nil }), "no hosts"},
+		// A list with an approval and no computers yet is valid; it is Targets
+		// that refuses to scan nothing.
+		{"an approval with no computers yet", edit(func(h *Hosts) { h.Hosts = nil }), ""},
 		{"a host with no name", edit(func(h *Hosts) { h.Hosts[0].Name = "" }), "missing name"},
 		{"the same host twice", edit(func(h *Hosts) {
 			h.Hosts = append(h.Hosts, Host{Name: "sql-02"})
@@ -135,6 +137,16 @@ func TestTargets(t *testing.T) {
 	}
 	if _, err := h.Targets("DC-01"); err == nil || !strings.Contains(err.Error(), "skip") {
 		t.Errorf("Targets(DC-01) = %v, want it refused as skipped", err)
+	}
+
+	// Nothing listed, or everything skipped, is nothing to scan.
+	empty := list()
+	if _, err := empty.Targets(""); err == nil || !strings.Contains(err.Error(), "no computers yet") {
+		t.Errorf("Targets on an empty list = %v, want it refused", err)
+	}
+	allSkipped := list(Host{Name: "SQL-02", Skip: true})
+	if _, err := allSkipped.Targets(""); err == nil || !strings.Contains(err.Error(), "skip") {
+		t.Errorf("Targets with everything skipped = %v, want it refused", err)
 	}
 }
 

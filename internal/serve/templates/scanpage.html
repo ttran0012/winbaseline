@@ -1,0 +1,160 @@
+{{define "head"}}{{if .Running}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
+
+{{define "content"}}
+<div class="head">
+  <div><h1>Scan</h1>
+    <div class="sub">Read settings and save hash-chained evidence. Nothing on any computer is
+      changed, and nothing is installed on one.</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    {{if .Job}}
+    <div class="card-h">{{if .Running}}Scan in progress{{else}}Last scan{{end}}
+      <span class="muted">started {{.Job.StartedAt.Format "15:04:05"}} by {{.ScannedAs}}</span>
+      <span class="end">{{.Job.Progress}} done</span></div>
+    {{if .Job.Err}}<div class="body"><div class="alert drift"><div><div class="t">The scan did not finish</div>
+      {{.Job.Err}}</div></div></div>{{end}}
+    <ul class="steps">
+      {{range .Steps}}<li>
+        <span class="strong">{{.Host}}</span>
+        <div class="bar{{if .Done}} done{{end}}"><i class="{{.Fill}}"></i></div>
+        {{if .Label}}<span class="badge {{.Badge}}">{{.Label}}</span>
+        {{else}}<span class="note">{{.Note}}</span>{{end}}
+      </li>
+      {{end}}
+    </ul>
+    <div class="body note">{{if .Running}}This page refreshes every 3 seconds while the scan runs
+      (a meta refresh, no script).{{else}}Finished
+      {{.Job.FinishedAt.Format "02 Jan 2006, 15:04:05"}}.{{end}}
+      Each computer's results appear on its own page once saved.</div>
+    {{else}}
+    <div class="card-h">Scan in progress <span class="end">nothing running</span></div>
+    <div class="body note">No scan has been started from this dashboard yet. A scan started on the
+      command line does not show here, but its evidence does.</div>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-h">Start a scan</div>
+    <div class="body">
+      <form class="form" method="post" action="/scan/start">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div><label for="target">Computers</label>
+          <select id="target" name="target">
+            {{if .Approved}}<option value="*">All {{len .Approved}} approved computers</option>{{end}}
+            <option value="">This computer</option>
+            {{range .Approved}}<option value="{{.Name}}">{{.Name}}{{if .Label}} - {{.Label}}{{end}}</option>{{end}}
+          </select></div>
+        <div class="actions">
+          <button class="btn primary" type="submit"{{if .Running}} disabled{{end}}>Start scan</button>
+          {{if .Running}}<span class="note">A scan is running; this waits until it finishes.</span>{{end}}
+        </div>
+      </form>
+      <dl class="facts mt">
+        <dt>Runs as</dt><dd>{{.ScannedAs}}{{if .Elevated}} (administrator){{else}} (not elevated){{end}}</dd>
+        {{if .Authorized}}<dt>Authorized by</dt><dd>{{.ApprovedBy}} &middot; until {{.Expires}}</dd>
+          <dt>Approved scope</dt><dd>{{.Scope}}</dd>{{end}}
+        <dt>Remote limits</dt><dd>Audit policy can only be read on the computer itself</dd>
+      </dl>
+      {{if .HostsErr}}<p class="note">Only this computer can be scanned: {{.HostsErr}}</p>{{end}}
+      <p class="note">Computer not in the list? <a href="#manage">Add it under Manage computers</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card mt" id="manage">
+  <div class="card-h">Manage computers <span class="muted">the approved scan scope, saved in
+    {{if .HostsFile}}{{.HostsFile}}{{else}}a host list{{end}}</span>
+    <span class="end">{{len .Managed}} listed &middot; {{.Skipped}} skipped</span></div>
+
+  {{if and .ManageErr (not .HasList)}}
+  <div class="body"><div class="alert info"><div><div class="t">No host list</div>{{.ManageErr}}
+    Start the dashboard with <span class="mono">-hosts hosts.yaml</span> to manage the scan
+    scope here.</div></div></div>
+  {{else if .ManageErr}}
+  <div class="body"><div class="alert warn"><div><div class="t">The host list cannot be changed</div>
+    {{.ManageErr}} Adding a computer is granting permission to read it, so the approval has to be in
+    force first. Put it right in {{.HostsFile}} and reload.</div></div></div>
+  {{else}}
+
+  {{if not .Authorized}}
+  <div class="body"><div class="alert warn"><div><div class="t">The host list cannot be changed</div>
+    {{.HostsErr}} Adding a computer is granting permission to read it, so the approval has to be in
+    force first. Put it right in the host list and reload.</div></div></div>
+  {{end}}
+
+  <div class="grid g2 flush">
+    <div class="split">
+      <table>
+        <thead><tr><th>Computer</th><th>Label</th><th>Added</th><th>Remote access</th><th></th></tr></thead>
+        <tbody>
+        {{range .Managed}}<tr>
+          <td class="strong{{if .Skip}} muted-name{{end}}">{{.Name}}</td>
+          <td>{{if .Label}}{{.Label}}{{else}}<span class="zero">&mdash;</span>{{end}}</td>
+          <td>{{.AddedLine}}</td>
+          <td><span class="badge {{.AccessBadge}}">{{.AccessLabel}}</span>
+            {{if .AccessHint}}<span class="where">{{.AccessHint}}</span>{{end}}</td>
+          <td>
+            {{if $.Authorized}}
+            <form class="inline" method="post" action="/hosts/test">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.Name}}">
+              <button class="btn small" type="submit">Test access</button>
+            </form>
+            <form class="inline" method="post" action="/hosts/skip">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.Name}}">
+              {{if .Skip}}<input type="hidden" name="include" value="1">
+              <button class="btn small" type="submit">Include</button>
+              {{else}}<button class="btn small" type="submit">Skip</button>{{end}}
+            </form>
+            <form class="inline" method="post" action="/hosts/remove">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.Name}}">
+              <button class="btn small" type="submit">Remove</button>
+            </form>
+            {{else}}<span class="note">locked</span>{{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5" class="note">The host list names no computers yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="body">
+      <h3 class="minor">Add a computer</h3>
+      {{if .Authorized}}
+      <form class="form" method="post" action="/hosts/add">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div><label for="nm">Computer name</label>
+          <input id="nm" name="name" type="text" required>
+          <div class="note">One computer name, such as WS03 or ws03.lab.example.test.
+            No addresses with masks, ranges or wildcards.</div></div>
+        <div><label for="lb">Label (optional)</label>
+          <input id="lb" name="label" type="text"></div>
+        <div><label class="check"><input type="checkbox" name="confirm" value="1" required>
+          <span>This computer is within the approved scanning scope:
+            <em>"{{.Scope}}"</em>, approved by {{.ApprovedBy}}, valid until {{.Expires}}.</span></label></div>
+        <div class="actions"><button class="btn primary" type="submit">Add computer</button></div>
+      </form>
+      <p class="note">Saved to the host list with your account name and today's date, keeping the
+        file's comments. The previous file is kept as <span class="mono">.bak</span> and every change
+        is appended to <span class="mono">hosts-changes.log</span>. Adding a computer only allows
+        reading it; nothing is installed on it.</p>
+      {{else}}
+      <p class="note">Computers cannot be added while the approval is missing, unfinished, or out of
+        date.</p>
+      {{end}}
+      <p class="note">Test access opens the remote registry and the service manager, read-only, and
+        gives up after {{.Timeout}}. It reads no setting.</p>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "footer"}}<footer class="site">Only computers in the approved host list can be scanned. No
+addresses, ranges or wildcards, and no computer that the approval does not cover.</footer>{{end}}
