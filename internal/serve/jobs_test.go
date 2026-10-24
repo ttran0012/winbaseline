@@ -100,7 +100,7 @@ func TestStartScanAcceptsTheFormABrowserActuallySends(t *testing.T) {
 	if err := os.WriteFile(baselinePath, []byte(testBaseline), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s := New(Options{Dir: dir, BaselinePath: baselinePath, Now: time.Now})
+	s := New(Options{Dir: dir, BaselineFile: baselinePath, Now: time.Now})
 
 	rec := post(t, s, url.Values{"target": {""}, "csrf": {s.csrf}}, map[string]string{
 		"Origin":         "null",
@@ -327,7 +327,7 @@ func TestStartScanOfThisComputerSavesVerifiableEvidence(t *testing.T) {
 	if err := os.WriteFile(baselinePath, []byte(testBaseline), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s := New(Options{Dir: dir, BaselinePath: baselinePath, Now: time.Now})
+	s := New(Options{Dir: dir, BaselineFile: baselinePath, Now: time.Now})
 
 	rec := post(t, s, url.Values{"target": {""}, "csrf": {s.csrf}}, nil)
 	if rec.Code != http.StatusSeeOther {

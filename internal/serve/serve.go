@@ -54,7 +54,8 @@ var writePaths = map[string]bool{
 // Server answers the dashboard pages for one results folder.
 type Server struct {
 	dir          string // the results folder, holding the scans and their ledgers
-	baselinePath string
+	baselineDir  string // folder of baselines, one chosen per computer by role
+	baselineFile string // -baseline: one baseline forced for every computer, or ""
 	hostsPath    string
 	writeHTML    bool
 	now          func() time.Time
@@ -69,7 +70,8 @@ type Server struct {
 // approval, or a computer that has stopped reporting, can be tested.
 type Options struct {
 	Dir          string
-	BaselinePath string
+	BaselineDir  string // folder of baseline files; a computer's role chooses one
+	BaselineFile string // -baseline: one baseline forced for every computer, or ""
 	HostsPath    string // the approved host list; without it, only this computer can be scanned
 	WriteHTML    bool
 	Addr         string // the address being served, shown on every page
@@ -81,7 +83,8 @@ type Options struct {
 func New(o Options) *Server {
 	s := &Server{
 		dir:          o.Dir,
-		baselinePath: o.BaselinePath,
+		baselineDir:  o.BaselineDir,
+		baselineFile: o.BaselineFile,
 		hostsPath:    o.HostsPath,
 		writeHTML:    o.WriteHTML,
 		addr:         o.Addr,
@@ -177,12 +180,14 @@ func (s *Server) checkTrustedForm(r *http.Request) error {
 	return nil
 }
 
-// hosts reads the approved host list.
+// hosts reads the approved host list, validating each computer's per-host
+// baseline against the baseline folder as it does, so a mistyped baseline is
+// caught when the list is read.
 func (s *Server) hosts() (*fleet.Hosts, error) {
 	if s.hostsPath == "" {
 		return nil, fmt.Errorf("no host list was given to -hosts, so only this computer can be scanned")
 	}
-	return fleet.Load(s.hostsPath)
+	return fleet.LoadFrom(s.hostsPath, s.baselineDir)
 }
 
 // newToken is a per-process form token. It is not a session: the dashboard has

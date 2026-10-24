@@ -39,17 +39,20 @@ import (
 // run is what one invocation needs: the parsed flags and the facts about this
 // computer, settled once before any reading starts.
 type run struct {
-	baseline   *baseline.Baseline
-	outDir     string
-	captureDir string
-	host       string // the computer this is running on
-	at         time.Time
-	elevated   bool
-	writeHTML  bool
+	baselineDir string             // -baselines: folder of baselines chosen by role
+	forced      *baseline.Baseline // -baseline: one baseline for every computer, or nil
+	forcedName  string             // the forced file's name, for the record
+	outDir      string
+	captureDir  string
+	host        string // the computer this is running on
+	at          time.Time
+	elevated    bool
+	writeHTML   bool
 }
 
 func main() {
-	baselinePath := flag.String("baseline", `baseline\windows11-baseline.yaml`, "path to the baseline YAML file")
+	baselineFile := flag.String("baseline", "", "force one baseline file for every computer, overriding role and the host list")
+	baselineDir := flag.String("baselines", "baseline", "folder of baseline files; a computer's role picks one when the host list does not name it")
 	outDir := flag.String("out", "results", "folder for saved scan results")
 	writeHTML := flag.Bool("html", true, "also write a readable HTML report beside each saved JSON result")
 	captureNow := flag.Bool("capture", false, "record this computer's current configuration as its approved capture, instead of scanning")
@@ -66,25 +69,32 @@ func main() {
 		return
 	}
 	if *dashboard {
-		serveDashboard(*addr, *outDir, *baselinePath, *hostsPath, *writeHTML)
+		serveDashboard(*addr, *outDir, *baselineDir, *baselineFile, *hostsPath, *writeHTML)
 		return
 	}
 
-	b, err := baseline.Load(*baselinePath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+	var forced *baseline.Baseline
+	var forcedName string
+	if *baselineFile != "" {
+		b, err := baseline.Load(*baselineFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
+		forced, forcedName = b, filepath.Base(*baselineFile)
 	}
 
 	host, _ := os.Hostname()
 	r := run{
-		baseline:   b,
-		outDir:     *outDir,
-		captureDir: filepath.Join(*outDir, capture.Dir),
-		host:       host,
-		at:         time.Now(),
-		elevated:   collect.IsElevated(),
-		writeHTML:  *writeHTML,
+		baselineDir: *baselineDir,
+		forced:      forced,
+		forcedName:  forcedName,
+		outDir:      *outDir,
+		captureDir:  filepath.Join(*outDir, capture.Dir),
+		host:        host,
+		at:          time.Now(),
+		elevated:    collect.IsElevated(),
+		writeHTML:   *writeHTML,
 	}
 
 	if *hostsPath != "" {
@@ -117,14 +127,15 @@ func main() {
 // serveDashboard runs the read-only dashboard until it is interrupted. The
 // address is checked before anything is printed, so a refused address never
 // leaves a URL on screen that nothing is listening on.
-func serveDashboard(addr, outDir, baselinePath, hostsPath string, writeHTML bool) {
+func serveDashboard(addr, outDir, baselineDir, baselineFile, hostsPath string, writeHTML bool) {
 	if err := serve.CheckLoopback(addr); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
 	s := serve.New(serve.Options{
 		Dir:          outDir,
-		BaselinePath: baselinePath,
+		BaselineDir:  baselineDir,
+		BaselineFile: baselineFile,
 		HostsPath:    hostsPath,
 		WriteHTML:    writeHTML,
 		Addr:         addr,
@@ -186,9 +197,15 @@ func verifyChains(outDir string) {
 	}
 }
 
-// recordCapture records this computer's configuration as approved.
+// recordCapture records this computer's configuration as approved, against the
+// baseline its role (or -baseline) chooses, the same one a scan would use.
 func (r run) recordCapture(propose bool) {
-	c, err := capture.Record(r.baseline, collect.New(), capture.Options{
+	b, _, err := r.selector(nil).Resolve(scan.Target{}, r.host)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
+	c, err := capture.Record(b, collect.New(), capture.Options{
 		Host:       r.host,
 		CapturedBy: collect.CurrentUser(),
 		At:         r.at,
@@ -234,7 +251,11 @@ func (r run) scan() {
 		fmt.Println()
 	}
 	t := scan.Target{Dir: r.outDir}
-	s := scan.Read(t, r.options())
+	s, err := scan.Read(t, r.options(nil))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
 	if s.CaptureStatus != "" {
 		fmt.Fprintln(os.Stderr, "warning: the approved capture was not used:", s.CaptureStatus)
 	}
@@ -243,10 +264,22 @@ func (r run) scan() {
 	os.Exit(scan.ExitCode(s))
 }
 
+// selector builds the baseline chooser for this run. perHost carries the host
+// list's per-computer assignments when there is a host list, and is nil for a
+// scan of this computer alone.
+func (r run) selector(perHost map[string]string) scan.Selector {
+	return scan.Selector{
+		Folder:     r.baselineDir,
+		Forced:     r.forced,
+		ForcedName: r.forcedName,
+		PerHost:    perHost,
+	}
+}
+
 // options are the facts every scan this run takes records.
-func (r run) options() scan.Options {
+func (r run) options(perHost map[string]string) scan.Options {
 	return scan.Options{
-		Baseline:  r.baseline,
+		Baselines: r.selector(perHost),
 		LocalHost: r.host,
 		At:        r.at,
 		Elevated:  r.elevated,
@@ -275,7 +308,7 @@ func (r run) saveScan(t scan.Target, s report.Scan) {
 // scanFleet reads every computer the host list approves. Each one keeps its own
 // folder of evidence, with its own chain, because a chain has one writer.
 func (r run) scanFleet(hostsPath, only string) {
-	hosts, err := fleet.Load(hostsPath)
+	hosts, err := fleet.LoadFrom(hostsPath, r.baselineDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
@@ -289,17 +322,29 @@ func (r run) scanFleet(hostsPath, only string) {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
+	perHost := hosts.Baselines()
 
 	a := hosts.Authorization
 	fmt.Printf("Scanning %d computer(s) from %s, as %s.\n", len(targets), hostsPath, collect.CurrentUser())
 	fmt.Printf("Approved by %s on %s, until %s: %s\n", a.ApprovedBy, a.Approved, a.Expires, a.Scope)
-	fmt.Printf("Baseline: %s v%s. Nothing on these computers is changed or installed.\n\n",
-		r.baseline.Name, r.baseline.Version)
+	if r.forced != nil {
+		fmt.Printf("Baseline: %s (forced for every computer). Nothing on these computers is changed or installed.\n\n", r.forcedName)
+	} else {
+		fmt.Printf("Baselines chosen per computer from %s (the host list, else the computer's role). "+
+			"Nothing on these computers is changed or installed.\n\n", r.baselineDir)
+	}
 
 	worst := 0
 	for _, h := range targets {
 		t := scan.Target{Host: h.Name, Label: h.Label, Dir: filepath.Join(r.outDir, h.Name)}
-		s := scan.Read(t, r.options())
+		s, err := scan.Read(t, r.options(perHost))
+		if err != nil {
+			fmt.Printf("%-20s could not choose a baseline: %v\n", h.Name, err)
+			if worst < 2 {
+				worst = 2
+			}
+			continue
+		}
 		code := scan.ExitCode(s)
 		if code > worst {
 			worst = code
@@ -310,7 +355,7 @@ func (r run) scanFleet(hostsPath, only string) {
 		if s.Capture != nil {
 			fmt.Printf("  %2d changed", sum.Changed)
 		}
-		fmt.Printf("   exit %d\n", code)
+		fmt.Printf("   exit %d   [%s]\n", code, s.BaselineName)
 		if sum.Total > 0 && sum.Errors == sum.Total {
 			fmt.Printf("%-20s   nothing could be read: %s\n", "", firstError(s))
 		}

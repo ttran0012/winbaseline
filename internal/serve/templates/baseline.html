@@ -1,13 +1,14 @@
 {{define "content"}}
 <div class="head">
-  <div><h1>Baseline</h1>
-    <div class="sub">{{if .Baseline}}{{.Baseline.Name}} &middot; v{{.Baseline.Version}}
-      {{if .Baseline.Benchmark}}&middot; {{.Baseline.Benchmark}} {{end}}&middot;
-      {{len .Baseline.Checks}} checks{{else}}No baseline loaded{{end}}</div></div>
+  <div><h1>Baselines</h1>
+    <div class="sub">{{if .Forced}}One baseline forced for every computer{{else}}
+      {{len .Baselines}} baseline(s) in {{.Folder}} &middot; each computer is read against the one its
+      role or the host list chooses{{end}}</div></div>
 </div>
 
-{{if not .Baseline}}
-<div class="alert drift"><div><div class="t">No baseline</div>{{.Err}}</div></div>
+{{if not .Baselines}}
+<div class="alert drift"><div><div class="t">No baselines</div>
+  No baseline files were found in {{.Folder}}. A scan needs at least one.</div></div>
 {{else}}
 
 {{range .Expiring}}
@@ -21,65 +22,70 @@
 {{end}}
 {{end}}
 
-<div class="grid g2e mb">
-  <div class="card">
-    <div class="card-h">Checks by type</div>
-    <table>
-      <thead><tr><th>Type</th><th class="num">Checks</th><th class="num">High</th>
-        <th class="num">Medium</th><th class="num">Low</th></tr></thead>
-      <tbody>
-      {{range .Types}}<tr>
-        <td>{{.Title}}</td>
-        <td class="num">{{.Checks}}</td>
-        <td class="num{{if not .High}} zero{{end}}">{{.High}}</td>
-        <td class="num{{if not .Medium}} zero{{end}}">{{.Medium}}</td>
-        <td class="num{{if not .Low}} zero{{end}}">{{.Low}}</td>
-      </tr>
-      {{end}}
-      </tbody>
-    </table>
+{{range .Baselines}}
+<div class="card mb">
+  <div class="card-h">{{if .Name}}{{.Name}}{{else}}{{.File}}{{end}}
+    {{if .Version}}<span class="muted">v{{.Version}}</span>{{end}}
+    <span class="end mono">{{.File}}</span></div>
+
+  {{if .Err}}
+  <div class="body"><div class="alert drift"><div><div class="t">This baseline will not load</div>
+    {{.Err}}</div></div></div>
+  {{else}}
+  <div class="body">
+    <dl class="facts">
+      {{if .Benchmark}}<dt>Benchmark</dt><dd>{{.Benchmark}}</dd>{{end}}
+      <dt>Checks</dt><dd>{{.Checks}}</dd>
+      <dt>Used by</dt><dd>{{if .Computers}}{{range $i, $h := .Computers}}{{if $i}}, {{end}}{{$h}}{{end}}
+        {{else}}no scanned computer yet{{end}}</dd>
+    </dl>
   </div>
 
-  <div class="card">
-    <div class="card-h">Approved exceptions <span class="muted">{{.InForce}} in force</span>
-      <span class="end">{{len .Exceptions}} listed</span></div>
-    {{if .Exceptions}}
-    <ul class="list">
-      {{range .Exceptions}}<li>
-        {{if eq .Expiry.Label "expired"}}<span class="badge b-drift">EXPIRED</span>
-        {{else if eq .Expiry.Label "soon"}}<span class="badge b-error">{{.Expiry.Days}} DAYS LEFT</span>
-        {{else}}<span class="badge b-ok">IN FORCE</span>{{end}}
-        <div class="main"><span class="mono strong">{{.Check}}</span>
-          {{if .Hosts}}&middot; {{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}}
-          {{else}}&middot; every computer{{end}}
-          <div class="meta">"{{.Reason}}" &middot; {{.ApprovedBy}} &middot; expires {{.Expires}}</div></div>
-      </li>
-      {{end}}
-    </ul>
-    {{else}}<div class="body note">This baseline approves no exceptions.</div>{{end}}
+  <div class="grid g2e">
+    <div class="split">
+      <table>
+        <caption>Checks by type</caption>
+        <thead><tr><th>Type</th><th class="num">Checks</th><th class="num">High</th>
+          <th class="num">Medium</th><th class="num">Low</th></tr></thead>
+        <tbody>
+        {{range .Types}}<tr>
+          <td>{{.Title}}</td>
+          <td class="num">{{.Checks}}</td>
+          <td class="num{{if not .High}} zero{{end}}">{{.High}}</td>
+          <td class="num{{if not .Medium}} zero{{end}}">{{.Medium}}</td>
+          <td class="num{{if not .Low}} zero{{end}}">{{.Low}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <table>
+        <caption>Approved exceptions</caption>
+        {{if .Exceptions}}
+        <tbody>
+        {{range .Exceptions}}<tr>
+          <td>
+            {{if eq .Expiry.Label "expired"}}<span class="badge b-drift">EXPIRED</span>
+            {{else if eq .Expiry.Label "soon"}}<span class="badge b-error">{{.Expiry.Days}} DAYS LEFT</span>
+            {{else}}<span class="badge b-ok">IN FORCE</span>{{end}}
+          </td>
+          <td><span class="mono strong">{{.Check}}</span>
+            {{if .Hosts}}<span class="where">{{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}}</span>
+            {{else}}<span class="where">every computer</span>{{end}}
+            <div class="meta">"{{.Reason}}" &middot; {{.ApprovedBy}} &middot; expires {{.Expires}}</div></td>
+        </tr>
+        {{end}}
+        </tbody>
+        {{else}}<tbody><tr><td class="note">This baseline approves no exceptions.</td></tr></tbody>{{end}}
+      </table>
+    </div>
   </div>
-</div>
-
-<div class="card">
-  <div class="card-h">All checks <span class="end">{{len .Baseline.Checks}}</span></div>
-  <table>
-    <thead><tr><th>Check</th><th>Severity</th><th>Setting</th><th>Where it lives</th>
-      <th>Expected</th><th>CIS</th></tr></thead>
-    <tbody>
-    {{range .Baseline.Checks}}<tr>
-      <td class="mono">{{.ID}}</td>
-      <td><span class="sev {{sevClass .Severity}}">{{upper .Severity}}</span></td>
-      <td>{{.Title}}</td>
-      <td class="mono">{{.Location}}</td>
-      <td><span class="val">{{.Expected}}</span></td>
-      <td>{{if .CIS}}{{.CIS}}{{else}}<span class="zero">&mdash;</span>{{end}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  {{end}}
 </div>
 {{end}}
 {{end}}
+{{end}}
 
-{{define "footer"}}<footer class="site">The baseline is read-only here. Edit
-{{if .Path}}{{.Path}}{{else}}the baseline file{{end}} and raise its version to change it.</footer>{{end}}
+{{define "footer"}}<footer class="site">Baselines are read-only here. Edit the files in the baseline
+folder and raise a baseline's version to change it.</footer>{{end}}

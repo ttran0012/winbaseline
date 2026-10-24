@@ -544,20 +544,6 @@ func (f filter) match(r compare.Result, types map[string]string) bool {
 	return true
 }
 
-// checkTypes maps check ID to type, for the type filter and the baseline page.
-// A scan records no type of its own and the baseline may have moved on since,
-// so a check the current baseline no longer lists has no type here.
-func checkTypes(b *baseline.Baseline) map[string]string {
-	types := map[string]string{}
-	if b == nil {
-		return types
-	}
-	for _, c := range b.Checks {
-		types[c.ID] = c.Type
-	}
-	return types
-}
-
 // expiry describes how close an approved exception is to running out.
 type expiry struct {
 	Label string // ok, soon, expired

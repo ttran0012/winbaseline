@@ -211,3 +211,96 @@ func TestLoadRejectsAFileWithNoApproval(t *testing.T) {
 		t.Errorf("Load() = %v, want it to refuse a list with no approval", err)
 	}
 }
+
+// A valid baseline the per-host tests can point at.
+const validBaseline = `name: Member Server
+version: 1.0.0
+checks:
+  - id: SVC-001
+    title: Spooler
+    severity: medium
+    type: service
+    service: Spooler
+    expected: disabled_or_absent
+`
+
+// baselineFolder writes one valid baseline file into a temp folder and returns
+// the folder.
+func baselineFolder(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "member.yaml"), []byte(validBaseline), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// writeHosts writes a host list file and returns its path.
+func writeHosts(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "hosts.yaml")
+	full := "authorization:\n" +
+		"  approved_by: \"J. Lee, IT Manager\"\n" +
+		"  approved: \"2026-10-01\"\n" +
+		"  expires: \"2026-12-31\"\n" +
+		"  scope: \"quarterly CIS review\"\n" +
+		body
+	if err := os.WriteFile(path, []byte(full), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A per-host baseline is validated against the folder when the list is read:
+// it has to name a file that exists and loads.
+func TestLoadFromValidatesPerHostBaselines(t *testing.T) {
+	folder := baselineFolder(t)
+
+	ok := writeHosts(t, "hosts:\n  - name: SRV01\n    baseline: member.yaml\n")
+	h, err := LoadFrom(ok, folder)
+	if err != nil {
+		t.Fatalf("a host naming an existing baseline should load: %v", err)
+	}
+	if h.Baselines()["srv01"] != "member.yaml" {
+		t.Errorf("Baselines() = %v, want srv01 -> member.yaml", h.Baselines())
+	}
+
+	// A host naming a file that is not in the folder is refused.
+	missing := writeHosts(t, "hosts:\n  - name: SRV01\n    baseline: nope.yaml\n")
+	if _, err := LoadFrom(missing, folder); err == nil || !strings.Contains(err.Error(), "nope.yaml") {
+		t.Errorf("LoadFrom with a missing baseline = %v, want it refused", err)
+	}
+
+	// A host whose baseline tries to climb out of the folder is refused.
+	traversal := writeHosts(t, "hosts:\n  - name: SRV01\n    baseline: ../secret.yaml\n")
+	if _, err := LoadFrom(traversal, folder); err == nil || !strings.Contains(err.Error(), "plain file name") {
+		t.Errorf("LoadFrom with a traversing baseline = %v, want it refused", err)
+	}
+
+	// A host with no baseline field is fine; its baseline is chosen by role.
+	none := writeHosts(t, "hosts:\n  - name: SRV01\n")
+	if _, err := LoadFrom(none, folder); err != nil {
+		t.Errorf("a host with no baseline field should load: %v", err)
+	}
+}
+
+// Load (no folder) does not look at the per-host baseline fields, because it
+// does not know where the baselines live.
+func TestLoadWithoutFolderSkipsBaselineCheck(t *testing.T) {
+	missing := writeHosts(t, "hosts:\n  - name: SRV01\n    baseline: nope.yaml\n")
+	if _, err := Load(missing); err != nil {
+		t.Errorf("Load without a folder should not check baselines: %v", err)
+	}
+}
+
+// An unreadable baseline file is reported when the list is read, not later.
+func TestLoadFromRejectsAnUnreadableBaseline(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "broken.yaml"), []byte("name: X\nversion: 1\nchecks: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hosts := writeHosts(t, "hosts:\n  - name: SRV01\n    baseline: broken.yaml\n")
+	if _, err := LoadFrom(hosts, dir); err == nil {
+		t.Error("a baseline with no checks should be refused when the list is read")
+	}
+}

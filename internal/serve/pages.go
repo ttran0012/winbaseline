@@ -51,7 +51,6 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	head := s.page("Fleet", "fleet", "")
 	computers := s.fleet()
-	b, _ := s.loadBaseline()
 
 	data := struct {
 		chrome
@@ -91,7 +90,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	if len(changedOn) > 0 {
 		data.ChangedWhere = "on " + strings.Join(changedOn, ", ")
 	}
-	data.Attention = s.attentionList(computers, b, head.Chain)
+	data.Attention = s.attentionList(computers, s.allExceptions(), head.Chain)
 	_, data.Running = s.runner.state()
 	s.render(w, "fleet.html", data)
 }
@@ -164,10 +163,10 @@ func (s *Server) computerPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if b, _ := s.loadBaseline(); b != nil {
+	{
 		now := s.now()
 		soonest := 0
-		for _, e := range b.Exceptions {
+		for _, e := range s.allExceptions() {
 			if exp := exceptionExpiry(e, now); exp.Label == "soon" && (soonest == 0 || exp.Days < soonest) {
 				soonest = exp.Days
 			}
@@ -196,8 +195,11 @@ func (s *Server) scanDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, baselineErr := s.loadBaseline()
-	types := checkTypes(b)
+	types := s.checkTypesAll()
+	baselineErr := ""
+	if len(types) == 0 {
+		baselineErr = "no baseline in the folder could be read, so results cannot be grouped by type"
+	}
 	f := readFilter(r.URL.Query())
 
 	var shown []compare.Result
@@ -420,9 +422,9 @@ func (s *Server) startScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refusing to start a scan: "+err.Error(), http.StatusForbidden)
 		return
 	}
-	b, err := baseline.Load(s.baselinePath)
+	sel, err := s.selector()
 	if err != nil {
-		http.Error(w, "cannot scan: the baseline would not load: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "cannot scan: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -432,7 +434,7 @@ func (s *Server) startScan(w http.ResponseWriter, r *http.Request) {
 	}
 	at := s.now()
 	opts := scan.Options{
-		Baseline:  b,
+		Baselines: sel,
 		LocalHost: localHost(),
 		At:        at,
 		Elevated:  collect.IsElevated(),
@@ -441,7 +443,11 @@ func (s *Server) startScan(w http.ResponseWriter, r *http.Request) {
 		for _, t := range targets {
 			host := displayHost(t)
 			rec.reading(host)
-			result := scan.Read(t, opts)
+			result, err := scan.Read(t, opts)
+			if err != nil {
+				rec.done(jobResult{Host: host, Err: err.Error()})
+				continue
+			}
 			saved, err := scan.Save(t, result, s.writeHTML)
 			rec.done(resultOf(host, result, saved, err))
 		}
@@ -517,46 +523,73 @@ type exceptionRow struct {
 	Expiry expiry
 }
 
+// baselineView is one baseline as the Baseline page shows it: its checks by
+// type, the computers held to it, its exceptions, and any trouble loading it.
+type baselineView struct {
+	File       string
+	Name       string
+	Version    string
+	Benchmark  string
+	Err        string
+	Types      []typeRow
+	Checks     int
+	Computers  []string // computers whose latest scan used this baseline
+	Exceptions []exceptionRow
+}
+
 func (s *Server) baselinePage(w http.ResponseWriter, r *http.Request) {
-	b, loadErr := s.loadBaseline()
+	loaded := s.baselines()
+	usedBy := s.baselineUsers()
+	now := s.now()
+
 	data := struct {
 		chrome
-		Baseline   *baseline.Baseline
-		Types      []typeRow
-		Exceptions []exceptionRow
-		Expiring   []exceptionRow
-		InForce    int
-		Err        string
-		Soon       int
-		Path       string
+		Baselines []baselineView
+		Expiring  []exceptionRow
+		Folder    string
+		Forced    string
 	}{
 		chrome: s.page("Baseline", "baseline", ""),
-		Err:    loadErr,
-		Soon:   int(expiringSoon.Hours() / 24),
-		Path:   s.baselinePath,
+		Folder: s.baselineDir,
+		Forced: s.baselineFile,
 	}
-	if b != nil {
-		data.Baseline = b
-		data.Types = checksByType(b)
-		now := s.now()
+
+	for _, lb := range loaded {
+		view := baselineView{File: lb.File}
+		if lb.Err != "" {
+			view.Err = lb.Err
+			data.Baselines = append(data.Baselines, view)
+			continue
+		}
+		b := lb.Baseline
+		view.Name, view.Version, view.Benchmark = b.Name, b.Version, b.Benchmark
+		view.Types = checksByType(b)
+		view.Checks = len(b.Checks)
+		view.Computers = usedBy[b.Name]
 		for _, e := range b.Exceptions {
 			row := exceptionRow{Exception: e, Expiry: exceptionExpiry(e, now)}
-			data.Exceptions = append(data.Exceptions, row)
-			if row.Expiry.Label == "expired" {
-				continue
-			}
-			data.InForce++
-			if row.Expiry.Label == "soon" {
+			view.Exceptions = append(view.Exceptions, row)
+			if row.Expiry.Label != "ok" {
 				data.Expiring = append(data.Expiring, row)
 			}
 		}
-		for _, row := range data.Exceptions {
-			if row.Expiry.Label == "expired" {
-				data.Expiring = append(data.Expiring, row)
-			}
-		}
+		data.Baselines = append(data.Baselines, view)
 	}
 	s.render(w, "baseline.html", data)
+}
+
+// baselineUsers maps a baseline name to the computers whose latest scan was read
+// against it, so the Baseline page can show which computer uses which.
+func (s *Server) baselineUsers() map[string][]string {
+	out := map[string][]string{}
+	for _, c := range s.fleet() {
+		if c.Latest == nil || c.Latest.Scan.BaselineName == "" {
+			continue
+		}
+		name := c.Latest.Scan.BaselineName
+		out[name] = append(out[name], c.Host)
+	}
+	return out
 }
 
 func (s *Server) verifyPage(w http.ResponseWriter, r *http.Request) {
@@ -595,20 +628,6 @@ func (s *Server) openSource(w http.ResponseWriter, r *http.Request) (source, *in
 		return source{}, nil, false
 	}
 	return src, ix, true
-}
-
-// loadBaseline reads the baseline, returning the reason as text when it cannot:
-// a missing or broken baseline file should not take the whole dashboard down,
-// since every other page is about evidence already saved.
-func (s *Server) loadBaseline() (*baseline.Baseline, string) {
-	if s.baselinePath == "" {
-		return nil, "no baseline file was given to -baseline"
-	}
-	b, err := baseline.Load(s.baselinePath)
-	if err != nil {
-		return nil, err.Error()
-	}
-	return b, ""
 }
 
 // stylesheet serves the one stylesheet the pages load. It is a file rather than

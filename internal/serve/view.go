@@ -344,7 +344,7 @@ type attention struct {
 // since a computer was approved, the computers that could not be read in full,
 // the evidence that does not verify, and the approvals about to lapse. Most
 // urgent first, in the same order the computer table uses.
-func (s *Server) attentionList(computers []computer, b *baseline.Baseline, chain chainStatus) []attention {
+func (s *Server) attentionList(computers []computer, exceptions []baseline.Exception, chain chainStatus) []attention {
 	var out []attention
 
 	for _, c := range computers {
@@ -403,9 +403,9 @@ func (s *Server) attentionList(computers []computer, b *baseline.Baseline, chain
 		}
 	}
 
-	if b != nil {
+	{
 		now := s.now()
-		for _, e := range b.Exceptions {
+		for _, e := range exceptions {
 			switch exp := exceptionExpiry(e, now); exp.Label {
 			case "expired":
 				out = append(out, attention{

@@ -44,7 +44,7 @@ func serverWithScan(t *testing.T, results []compare.Result) (*Server, string, *t
 		t.Fatal(err)
 	}
 	clock := testNow
-	srv := New(Options{Dir: dir, BaselinePath: baselinePath, Now: func() time.Time { return clock }})
+	srv := New(Options{Dir: dir, BaselineFile: baselinePath, Now: func() time.Time { return clock }})
 	return srv, entry.File, &clock
 }
 
@@ -262,7 +262,7 @@ func TestNextScanComparesAgainstTheApprovedBaseline(t *testing.T) {
 func TestApprovalHistoryListsEveryApproval(t *testing.T) {
 	dir, baselinePath, saved := testResults(t)
 	clock := testNow
-	s := New(Options{Dir: dir, BaselinePath: baselinePath, Now: func() time.Time { return clock }})
+	s := New(Options{Dir: dir, BaselineFile: baselinePath, Now: func() time.Time { return clock }})
 
 	if rec := postPath(t, s, approvePath, approvalForm(s, saved[1].File), nil); rec.Code != http.StatusSeeOther {
 		t.Fatalf("first approval = %d, want 303: %s", rec.Code, rec.Body.String())

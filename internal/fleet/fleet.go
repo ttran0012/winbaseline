@@ -12,6 +12,7 @@ package fleet
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -43,11 +44,12 @@ type Authorization struct {
 
 // Host is one computer to read.
 type Host struct {
-	Name    string `yaml:"name"`               // the computer name, as Windows knows it
-	Label   string `yaml:"label,omitempty"`    // what it is, for the report
-	Skip    bool   `yaml:"skip,omitempty"`     // listed and approved, but left out of this run
-	Added   string `yaml:"added,omitempty"`    // the date it was put on the list
-	AddedBy string `yaml:"added_by,omitempty"` // who put it there
+	Name     string `yaml:"name"`               // the computer name, as Windows knows it
+	Label    string `yaml:"label,omitempty"`    // what it is, for the report
+	Skip     bool   `yaml:"skip,omitempty"`     // listed and approved, but left out of this run
+	Baseline string `yaml:"baseline,omitempty"` // a baseline file in the baseline folder; empty means choose by role
+	Added    string `yaml:"added,omitempty"`    // the date it was put on the list
+	AddedBy  string `yaml:"added_by,omitempty"` // who put it there
 }
 
 // hostName is what a computer name may look like: a NetBIOS name or a DNS name.
@@ -55,8 +57,19 @@ type Host struct {
 // path or a range.
 var hostName = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$`)
 
-// Load reads a host list and checks that it authorizes anything at all.
+// Load reads a host list and checks that it authorizes anything at all. It does
+// not check the per-host baseline fields, because it does not know the baseline
+// folder; LoadFrom does.
 func Load(path string) (*Hosts, error) {
+	return LoadFrom(path, "")
+}
+
+// LoadFrom reads a host list and, when baselineFolder is given, also checks that
+// every per-host baseline names a file in that folder which exists and loads.
+// A host list is read this way wherever the baseline folder is known, so a
+// mistyped or unreadable per-host baseline is caught the moment the list is
+// read, not when that computer is finally scanned.
+func LoadFrom(path, baselineFolder string) (*Hosts, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read host list: %w", err)
@@ -68,7 +81,51 @@ func Load(path string) (*Hosts, error) {
 	if err := h.Validate(); err != nil {
 		return nil, err
 	}
+	if baselineFolder != "" {
+		if err := h.ValidateBaselines(baselineFolder); err != nil {
+			return nil, err
+		}
+	}
 	return &h, nil
+}
+
+// ValidateBaselines checks that every per-host baseline names a plain file in
+// folder that exists and loads. A host with no baseline field is chosen for by
+// role at scan time and needs nothing here.
+func (h *Hosts) ValidateBaselines(folder string) error {
+	for _, host := range h.Hosts {
+		if host.Baseline == "" {
+			continue
+		}
+		if !validBaselineName(host.Baseline) {
+			return fmt.Errorf("host %q: baseline %q is not a plain file name in the baseline folder",
+				host.Name, host.Baseline)
+		}
+		if _, err := baseline.Load(filepath.Join(folder, host.Baseline)); err != nil {
+			return fmt.Errorf("host %q: baseline %q: %w", host.Name, host.Baseline, err)
+		}
+	}
+	return nil
+}
+
+// Baselines returns the per-host baseline assignments, keyed by lowercased host
+// name, for the scanner to resolve against. Hosts with no assignment are left
+// out, to be chosen for by role.
+func (h *Hosts) Baselines() map[string]string {
+	out := map[string]string{}
+	for _, host := range h.Hosts {
+		if host.Baseline != "" {
+			out[strings.ToLower(host.Name)] = host.Baseline
+		}
+	}
+	return out
+}
+
+// validBaselineName rejects anything that is not a bare file name, so a host
+// list cannot point the scanner at a file outside the baseline folder.
+func validBaselineName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, `/\`) &&
+		filepath.Base(name) == name && !strings.Contains(name, "..")
 }
 
 // Validate rejects a host list that does not record an approval, or that names

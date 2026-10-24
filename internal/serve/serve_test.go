@@ -125,7 +125,7 @@ func testServer(t *testing.T) (*Server, []report.ChainEntry) {
 	dir, baselinePath, saved := testResults(t)
 	return New(Options{
 		Dir:          dir,
-		BaselinePath: baselinePath,
+		BaselineFile: baselinePath,
 		Now:          func() time.Time { return testNow },
 	}), saved
 }
@@ -166,7 +166,7 @@ func TestPagesRender(t *testing.T) {
 			"Compare scans", "New drift", "Fixed", "Still drifting", "Value changed",
 		}},
 		{"baseline", "/baseline", []string{
-			"Test Baseline", "Approved exceptions", "Checks by type", "All checks",
+			"Baselines", "Test Baseline", "Approved exceptions", "Checks by type",
 			"REG-001", "vendor app needs the service",
 		}},
 		{"evidence", "/verify", []string{"Evidence", "Ledgers", "What this proves", "VERIFIED"}},

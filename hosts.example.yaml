@@ -15,6 +15,14 @@
 # cannot be read this way at all - Windows has no remote audit policy API - so
 # those checks come back unreadable on a remote scan. To cover them, run
 # driftscan on the computer itself as a scheduled task.
+#
+# Each host may name a baseline with an optional "baseline:" field, a file in
+# the -baselines folder (default "baseline"). A host with no baseline field is
+# read against the one its role chooses: a domain controller, a member server,
+# and a workstation each have their own. -baseline overrides both with one file
+# for every computer. A named baseline that is missing or will not load is
+# reported the moment this file is read, not when the computer is finally
+# scanned.
 
 # Who approved reading these computers, when, and for how long. driftscan
 # refuses to run while any of this is missing or still says TODO, and stops
@@ -28,9 +36,11 @@ authorization:
 hosts:
   - name: SQL-02
     label: "database server"
+    # No baseline field: SQL-02's role (member server) picks one.
 
   - name: FILE-03
     label: "file server"
+    baseline: windows-server-2025-ms-baseline.yaml   # pin this computer to one
 
   # A computer that is listed and approved, but left out of this run.
   - name: DC-01
