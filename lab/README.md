@@ -7,7 +7,7 @@ defaults. Deliberate changes on any of them should show up as drift.
 
 | VM | OS | IP | RAM / Disk | Role |
 |---|---|---|---|---|
-| DC01 | Windows Server 2022 Standard (Server Core) | 10.10.10.10 | 4 GB / 60 GB | Domain controller + DNS for `lab.atlas-tech.test` |
+| DC01 | Windows Server 2022 Standard (Server Core) | 10.10.10.10 | 4 GB / 60 GB | Domain controller + DNS for `lab.example.test` (change with `-Domain`) |
 | WS01 | Windows 11 Enterprise (evaluation) | 10.10.10.21 | 4 GB / 64 GB | Hardened client (OU=Hardened) |
 | WS02 | Windows 11 Enterprise (evaluation) | 10.10.10.22 | 4 GB / 64 GB | Default client (OU=Default) |
 | SRV01 | Windows Server 2025 (evaluation) | 10.10.10.31 | 4 GB / 60 GB | Member server (OU=Default) |

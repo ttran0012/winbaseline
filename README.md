@@ -9,13 +9,17 @@ that has drifted from the approved value, and saves the results as tamper-eviden
 settings and writes evidence; it never changes a setting on any computer it reads, and installs
 nothing on one.
 
-· IT599 Capstone ·
+## Documentation
+
+- [User guide](docs/user-guide.md): install, scan, read results, approve configurations, exceptions, scanning many computers, the dashboard, troubleshooting, and a command reference.
+- [Baseline configuration](docs/baseline-configuration.md): every check in the three baselines, why each one matters, severity, exceptions, approvals, versioning, and the NIST SP 800-171 mapping.
+- [Test lab](lab/README.md): scripts that build a Hyper-V Active Directory lab for testing.
 
 ## Status
 
 | Area | Status |
 |---|---|
-| Baseline format (YAML) | v0.3.0, 90 checks across 7 check types (48 registry, 17 services, 3 accounts and groups, 3 firewall, 17 audit policy, 2 software) |
+| Baselines (YAML) | v0.3.0: Windows 11 (90 checks), Windows Server 2022 domain controller (87), Windows Server 2025 member server (80); a computer's role picks one |
 | Registry collector | Working |
 | Services collector | Working (start type via Service Control Manager, query rights only) |
 | Accounts collector | Working (built-in Guest/Administrator found by RID; Administrators group members found by SID) |
@@ -281,13 +285,15 @@ list approves. Then open <http://127.0.0.1:8080/>. The pages are:
 
 | Page | What it shows |
 |---|---|
-| Overview | Every computer, the ones needing attention first: never scanned, unreadable, stopped reporting, evidence that does not verify, drift, then the quiet ones. Also the **Start scan** form and the evidence chain status |
-| Scan progress | What a running scan is doing, computer by computer. It refreshes itself, with no script |
-| Scans | One computer's drift trend, what changed since its capture, and every scan in its ledger |
-| Scan | One scan's results, narrowable by status, severity, and check type through the query string: `?status=DRIFT&severity=high` |
+| Fleet | Every computer, most urgent first, with totals for computers needing attention, settings changed since capture, drift findings, and evidence status, plus a Needs attention list |
+| Computer | One computer's state, its changes since the approved capture, its drift trend, and the **Approve as baseline** button |
+| Results | One scan's checks grouped by type, filterable by status and severity through the query string: `?status=DRIFT&severity=high` |
 | Compare | Two of one computer's scans side by side: new drift, fixed, still drifting, changed values |
-| Baseline | The checks and the approved exceptions, marking any approval that has expired or expires within 30 days |
-| Verify evidence | Re-runs the hash chain check over every ledger: each computer's scans, and the captures beside them |
+| Scan | Start a scan and watch its progress. **Manage computers** adds, skips, or removes computers in the host list and tests remote access |
+| Baseline | Every baseline, which computers use it, its checks, and the approved exceptions, marking any that expire within 30 days |
+| Evidence | Re-runs the hash chain check over every ledger: each computer's scans, and the captures beside them |
+
+The [user guide](docs/user-guide.md) walks through each page.
 
 ### Why it is built this way
 

@@ -1,12 +1,14 @@
 #Requires -RunAsAdministrator
 # Run inside DC01 three times; each run does the next phase and restarts when needed.
 #   Run 1: set the static IP and rename to DC01 (restarts)
-#   Run 2: install Active Directory and create the lab.atlas-tech.test forest (restarts)
+#   Run 2: install Active Directory and create the lab forest (restarts)
 #   Run 3: create the lab OUs and the itadmin account
+# Pass -Domain to use another domain name; the default is lab.example.test.
+
+param([string] $Domain = 'lab.example.test')
 
 $ErrorActionPreference = 'Stop'
-$Domain = 'lab.atlas-tech.test'
-$DomainDN = 'DC=lab,DC=atlas-tech,DC=test'
+$DomainDN = 'DC=' + ($Domain -replace '\.', ',DC=')
 
 if ($env:COMPUTERNAME -ne 'DC01') {
   $nic = Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1

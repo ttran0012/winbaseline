@@ -5,7 +5,7 @@ $SwitchName = 'WinBaseline-Lab'                  # internal switch, isolated fro
 $NatName   = 'WinBaseline-Lab-NAT'
 $Subnet    = '10.10.10.0/24'
 $HostIP    = '10.10.10.254'                       # host side of the switch; NAT gateway for the VMs
-$Domain    = 'lab.atlas-tech.test'                # .test is reserved for testing and never clashes with a real domain
+$Domain    = 'lab.example.test'                  # .test is reserved for testing and never clashes with a real domain
 
 # Name, OS (server = DC ISO | client = Windows 11 ISO | member = Server 2025 ISO), IP, RAM (GB), disk (GB), OU
 $LabVMs = @(

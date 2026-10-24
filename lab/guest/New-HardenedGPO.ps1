@@ -4,13 +4,15 @@
 # WS02 in the Default OU keeps Windows defaults, so the two clients can be compared.
 # Audit policy and the administrator rename are applied locally by Set-LocalHardening.ps1.
 
+param([string] $Domain = 'lab.example.test')   # the lab domain created by Set-DC.ps1
+
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Module -ListAvailable GroupPolicy)) {
   Install-WindowsFeature GPMC | Out-Null   # Server Core may not include the Group Policy tools
 }
 Import-Module GroupPolicy
 $GpoName = 'WinBaseline - CIS Hardened'
-$Target = 'OU=Hardened,OU=Lab Computers,DC=lab,DC=atlas-tech,DC=test'
+$Target = 'OU=Hardened,OU=Lab Computers,DC=' + ($Domain -replace '\.', ',DC=')
 
 $gpo = Get-GPO -Name $GpoName -ErrorAction SilentlyContinue
 if (-not $gpo) {

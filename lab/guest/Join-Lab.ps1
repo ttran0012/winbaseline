@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 # Run inside each Windows 11 client and the member server. Sets the static IP, renames the
-# computer if needed, and joins lab.atlas-tech.test in the right OU. Sign in with
+# computer if needed, and joins the lab domain (-Domain, default lab.example.test) in the right OU. Sign in with
 # LAB\Administrator when prompted.
 #   WS01:  .\Join-Lab.ps1 -Name WS01 -IP 10.10.10.21 -OU Hardened
 #   WS02:  .\Join-Lab.ps1 -Name WS02 -IP 10.10.10.22 -OU Default
@@ -9,7 +9,8 @@
 param(
   [Parameter(Mandatory)] [ValidateSet('WS01', 'WS02', 'SRV01')] [string] $Name,
   [Parameter(Mandatory)] [string] $IP,
-  [Parameter(Mandatory)] [ValidateSet('Hardened', 'Default')] [string] $OU
+  [Parameter(Mandatory)] [ValidateSet('Hardened', 'Default')] [string] $OU,
+  [string] $Domain = 'lab.example.test'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,7 +25,7 @@ Set-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -ServerAddresses 10.10.1
 Clear-DnsClientCache
 $found = $false
 foreach ($try in 1..10) {
-  if (Resolve-DnsName lab.atlas-tech.test -Server 10.10.10.10 -DnsOnly -ErrorAction SilentlyContinue) { $found = $true; break }
+  if (Resolve-DnsName $Domain -Server 10.10.10.10 -DnsOnly -ErrorAction SilentlyContinue) { $found = $true; break }
   Start-Sleep -Seconds 2
 }
 if (-not $found) {
@@ -35,9 +36,9 @@ Clear-DnsClientCache
 
 $cred = Get-Credential -Message 'Domain account that can join computers' -UserName 'LAB\Administrator'
 $join = @{
-  DomainName = 'lab.atlas-tech.test'
+  DomainName = $Domain
   Credential = $cred
-  OUPath     = "OU=$OU,OU=Lab Computers,DC=lab,DC=atlas-tech,DC=test"
+  OUPath     = "OU=$OU,OU=Lab Computers,$('DC=' + ($Domain -replace '\.', ',DC='))"
 }
 if ($env:COMPUTERNAME -ne $Name) { $join.NewName = $Name }   # renaming to the current name is an error
 Add-Computer @join -Restart
