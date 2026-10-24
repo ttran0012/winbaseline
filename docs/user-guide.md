@@ -281,9 +281,6 @@ computer, so other computers on the network cannot open it.
 | Scan | Start a scan of this computer or of the approved computers, and watch its progress. **Manage computers** adds, skips, or removes computers in `hosts.yaml` and tests remote access. |
 | Baseline | Every baseline, which computers use it, its checks, and the approved exceptions with their expiry dates. |
 | Evidence | Runs the evidence check over every computer's records and shows the result. |
-
-The [UI mockup](ui-mockup.html) shows the page layout.
-
 ### Add a computer
 
 1. Open **Scan**, then **Manage computers**.

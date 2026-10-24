@@ -18,7 +18,7 @@ var dashboardCSS []byte
 
 // styleSheet is what /style.css serves. The saved HTML report keeps its own
 // styles inline, because a file that gets emailed has to carry them; the
-// dashboard has the design system in docs/ui-mockup.html instead.
+// dashboard keeps its design tokens and components in static/dashboard.css.
 var styleSheet = dashboardCSS
 
 // funcs are the helpers the pages need: which badge class a value wears, and
